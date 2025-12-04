@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -11,6 +12,8 @@ import * as schema from "src/schema/schema";
 import { AuthenticatedUser } from "src/middleware/auth.middleware";
 import { AssignRolesDto } from "./dto/assign-roles.dto";
 import { SetUserCampusDto } from "./dto/set-user-campus.dto";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
 
 @Injectable()
 export class UsersService {
@@ -119,6 +122,141 @@ export class UsersService {
       primaryCampusId: u.primaryCampusId ?? u.fallbackCampusId ?? null,
       roles: rolesByUser[u.id] ?? [],
     }));
+  }
+
+  async createUser(dto: CreateUserDto, requester: AuthenticatedUser) {
+    if (!this.isSuperAdmin(requester) && !this.isAdmin(requester)) {
+      throw new ForbiddenException("Not permitted");
+    }
+
+    const [campus] = await this.db
+      .select({ id: schema.campuses.id })
+      .from(schema.campuses)
+      .where(eq(schema.campuses.id, dto.campus_id));
+    if (!campus) {
+      throw new BadRequestException("Campus not found");
+    }
+
+    const [existing] = await this.db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, dto.email));
+    if (existing) {
+      throw new BadRequestException("User with this email already exists");
+    }
+
+    const [user] = await this.db
+      .insert(schema.users)
+      .values({
+        name: dto.name.trim(),
+        email: dto.email.trim().toLowerCase(),
+        campusId: dto.campus_id,
+        address: dto.address,
+        googleId: dto.google_id,
+        status: dto.status ?? "active",
+      })
+      .returning({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      });
+
+    // Ensure primary campus link
+    await this.db.insert(schema.userCampuses).values({
+      userId: user.id,
+      campusId: dto.campus_id,
+      isPrimary: true,
+    }).onConflictDoUpdate({
+      target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+      set: { isPrimary: true },
+    });
+
+    return user;
+  }
+
+  async updateUser(
+    userId: number,
+    dto: UpdateUserDto,
+    requester: AuthenticatedUser,
+  ) {
+    if (!this.isSuperAdmin(requester) && !this.isAdmin(requester)) {
+      throw new ForbiddenException("Not permitted");
+    }
+
+    const [existingUser] = await this.db
+      .select({
+        id: schema.users.id,
+        campusId: schema.users.campusId,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId));
+    if (!existingUser) {
+      throw new NotFoundException("User not found");
+    }
+
+    let campusIdToSet = dto.campus_id ?? existingUser.campusId;
+
+    if (dto.campus_id) {
+      const [campus] = await this.db
+        .select({ id: schema.campuses.id })
+        .from(schema.campuses)
+        .where(eq(schema.campuses.id, dto.campus_id));
+      if (!campus) {
+        throw new BadRequestException("Campus not found");
+      }
+    }
+
+    if (
+      !this.isSuperAdmin(requester) &&
+      campusIdToSet &&
+      !requester.campusIds?.includes(campusIdToSet)
+    ) {
+      throw new ForbiddenException("Campus access denied");
+    }
+
+    const [updated] = await this.db
+      .update(schema.users)
+      .set({
+        name: dto.name ?? undefined,
+        campusId: dto.campus_id ?? undefined,
+        address: dto.address ?? undefined,
+        googleId: dto.google_id ?? undefined,
+        status: dto.status ?? undefined,
+      })
+      .where(eq(schema.users.id, userId))
+      .returning({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      });
+
+    if (dto.campus_id) {
+      // Update primary campus link
+      await this.db
+        .update(schema.userCampuses)
+        .set({ isPrimary: false })
+        .where(eq(schema.userCampuses.userId, userId));
+
+      await this.db
+        .insert(schema.userCampuses)
+        .values({
+          userId,
+          campusId: dto.campus_id,
+          isPrimary: true,
+        })
+        .onConflictDoUpdate({
+          target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+          set: { isPrimary: true },
+        });
+    }
+
+    return updated;
   }
 
   async assignRoles(
