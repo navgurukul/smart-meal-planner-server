@@ -16,7 +16,9 @@ import type { RequestWithUser } from "src/middleware/auth.middleware";
 import { AssignRolesDto } from "./dto/assign-roles.dto";
 import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { UsersService } from "./users.service";
-import { ApiBody } from "@nestjs/swagger";
+import { ApiBody, ApiOperation } from "@nestjs/swagger";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
 
 @ApiTags("Users")
 // Swagger security scheme name must match the one defined in DocumentBuilder (`JWT-auth`).
@@ -24,6 +26,17 @@ import { ApiBody } from "@nestjs/swagger";
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @Post()
+  @ApiBody({ type: CreateUserDto })
+  @ApiOperation({ summary: "Create a user (admin/super-admin)" })
+  create(
+    @Body() body: CreateUserDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.createUser(body, req.user!);
+  }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Get()
@@ -36,6 +49,18 @@ export class UsersController {
       Number.isNaN(parsedCampusId) ? null : parsedCampusId,
       req.user!,
     );
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiBody({ type: UpdateUserDto })
+  @ApiOperation({ summary: "Update user details (admin/super-admin)" })
+  @Post(":userId")
+  updateUser(
+    @Param("userId", ParseIntPipe) userId: number,
+    @Body() body: UpdateUserDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.updateUser(userId, body, req.user!);
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
