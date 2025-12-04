@@ -1,12 +1,40 @@
-import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { DrizzleModule } from './db/drizzle.module';
-import { UsersModule } from './users/users.module';
+import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
+import { AuthModule } from "./auth/auth.module";
+import { CampusChangeRequestsModule } from "./campus-change-requests/campus-change-requests.module";
+import { DrizzleModule } from "./db/drizzle.module";
+import { AuthMiddleware } from "./middleware/auth.middleware";
+import { MealItemsModule } from "./meal-items/meal-items.module";
+import { MealSelectionsModule } from "./meal-selections/meal-selections.module";
+import { MenusModule } from "./menus/menus.module";
+import { KitchenModule } from "./kitchen/kitchen.module";
+import { QrTokenModule } from "./qr-token/qr-token.module";
+import { UsersModule } from "./users/users.module";
+import { CampusMealSlotsModule } from "./campus-meal-slots/campus-meal-slots.module";
 
 @Module({
-  imports: [DrizzleModule, UsersModule],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    DrizzleModule,
+    UsersModule,
+    CampusChangeRequestsModule,
+    MenusModule,
+    MealSelectionsModule,
+    MealItemsModule,
+    KitchenModule,
+    QrTokenModule,
+    CampusMealSlotsModule,
+    AuthModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(AuthMiddleware).forRoutes("*");
+  }
+}
