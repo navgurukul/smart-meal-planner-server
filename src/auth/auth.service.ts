@@ -24,6 +24,7 @@ export class AuthService {
     try {
       // Verify Google ID token
       const googleUser = await this.verifyGoogleToken(loginDto.googleIdToken);
+      console.log('Google User:', googleUser);
 
       if (googleUser.email !== loginDto.email) {
         throw new UnauthorizedException('Email mismatch');

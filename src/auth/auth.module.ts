@@ -11,6 +11,7 @@ import { DrizzleModule } from 'src/db/drizzle.module';
 
 @Module({
   imports: [
+    ConfigModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     DrizzleModule,
     JwtModule.registerAsync({

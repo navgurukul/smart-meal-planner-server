@@ -55,7 +55,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: 'Logout user (invalidate token)' })
   @ApiResponse({
     status: 200,
@@ -76,7 +76,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  @ApiBearerAuth()
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({
     status: 200,
@@ -101,7 +101,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: 'Refresh JWT token' })
   @ApiResponse({
     status: 200,
@@ -122,7 +122,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('verify')
-  @ApiBearerAuth()
+  @ApiBearerAuth("JWT-auth")
   @ApiOperation({ summary: 'Verify if token is valid' })
   @ApiResponse({
     status: 200,
