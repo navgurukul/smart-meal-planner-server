@@ -14,6 +14,7 @@ import { AssignRolesDto } from "./dto/assign-roles.dto";
 import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { SelfUpdateDto } from "./dto/self-update.dto";
 
 @Injectable()
 export class UsersService {
@@ -522,6 +523,63 @@ export class UsersService {
         target: [schema.userCampuses.userId, schema.userCampuses.campusId],
         set: { isPrimary: true },
       });
+
+    return updated;
+  }
+
+  async selfUpdate(userId: number, dto: SelfUpdateDto) {
+    let campusIdToSet: number | undefined = dto.campus_id;
+
+    if (dto.campus_id) {
+      const [campus] = await this.db
+        .select({ id: schema.campuses.id })
+        .from(schema.campuses)
+        .where(eq(schema.campuses.id, dto.campus_id));
+      if (!campus) {
+        throw new NotFoundException("Campus not found");
+      }
+    }
+
+    const [updated] = await this.db
+      .update(schema.users)
+      .set({
+        name: dto.name ?? undefined,
+        campusId: campusIdToSet ?? undefined,
+        address: dto.address ?? undefined,
+        googleId: dto.google_id ?? undefined,
+      })
+      .where(eq(schema.users.id, userId))
+      .returning({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      });
+
+    if (!updated) {
+      throw new NotFoundException("User not found");
+    }
+
+    if (campusIdToSet) {
+      await this.db
+        .update(schema.userCampuses)
+        .set({ isPrimary: false })
+        .where(eq(schema.userCampuses.userId, userId));
+
+      await this.db
+        .insert(schema.userCampuses)
+        .values({
+          userId,
+          campusId: campusIdToSet,
+          isPrimary: true,
+        })
+        .onConflictDoUpdate({
+          target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+          set: { isPrimary: true },
+        });
+    }
 
     return updated;
   }
