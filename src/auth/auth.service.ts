@@ -48,12 +48,20 @@ export class AuthService {
       }
 
       // Generate JWT token
+      const roleRows = await this.db
+        .select({ roleName: schema.roles.name })
+        .from(schema.userRole)
+        .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
+        .where(eq(schema.userRole.userId, user.id));
+      const roles = roleRows.map((r) => r.roleName);
+
       const payload = {
         sub: user.id,
         email: user.email,
         name: user.name,
         campusId: user.campusId,
         status: user.status,
+        roles,
       };
 
       const access_token = this.jwtService.sign(payload);
@@ -69,6 +77,7 @@ export class AuthService {
           campusId: user.campusId,
           status: user.status,
           address: user.address,
+          roles,
         },
       };
     } catch (error) {

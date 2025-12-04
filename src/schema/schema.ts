@@ -149,7 +149,12 @@ export const userCampuses = smps_db.table("smps_user_campuses", {
     .notNull(),
   isPrimary: boolean("is_primary").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  userCampusUnique: uniqueIndex("smps_user_campuses_user_campus_unique").on(
+    table.userId,
+    table.campusId,
+  ),
+}));
 
 export const campusChangeStatusEnum = pgEnum("smps_campus_change_status", [
   "PENDING",

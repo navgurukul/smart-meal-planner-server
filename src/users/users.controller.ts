@@ -20,6 +20,7 @@ import { ApiBody, ApiOperation } from "@nestjs/swagger";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { Public } from "src/auth/decorators/public.decorator";
+import { SelfUpdateDto } from "./dto/self-update.dto";
 
 @ApiTags("Users")
 // Swagger security scheme name must match the one defined in DocumentBuilder (`JWT-auth`).
@@ -60,6 +61,14 @@ export class UsersController {
   @ApiOperation({ summary: "Set my campus (self-serve)" })
   setMyCampus(@Body() body: SetUserCampusDto, @Req() req: RequestWithUser) {
     return this.usersService.setMyCampus(req.user!.id, body.campus_id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("me")
+  @ApiBody({ type: SelfUpdateDto })
+  @ApiOperation({ summary: "Update my profile (self-serve)" })
+  updateMe(@Body() body: SelfUpdateDto, @Req() req: RequestWithUser) {
+    return this.usersService.selfUpdate(req.user!.id, body);
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
