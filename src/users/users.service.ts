@@ -30,6 +30,24 @@ export class UsersService {
     return user.roles?.includes("ADMIN");
   }
 
+  private async ensureRole(name: string) {
+    const roleName = name.toUpperCase();
+    const [role] = await this.db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq(schema.roles.name, roleName));
+    if (role) return role.id;
+
+    const [created] = await this.db
+      .insert(schema.roles)
+      .values({
+        name: roleName,
+        description: `${roleName.toLowerCase()} role`,
+      })
+      .returning({ id: schema.roles.id });
+    return created.id;
+  }
+
   async listUsers(
     campusId: number | null,
     requester: AuthenticatedUser,
@@ -122,6 +140,28 @@ export class UsersService {
       primaryCampusId: u.primaryCampusId ?? u.fallbackCampusId ?? null,
       roles: rolesByUser[u.id] ?? [],
     }));
+  }
+
+  async listAllBasic(): Promise<
+    Array<{
+      id: number;
+      name: string | null;
+      email: string;
+      campusId: number | null;
+      status: string | null;
+    }>
+  > {
+    const users = await this.db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+      })
+      .from(schema.users);
+
+    return users;
   }
 
   async createUser(dto: CreateUserDto, requester: AuthenticatedUser) {
@@ -437,5 +477,112 @@ export class UsersService {
     }
 
     return { campus_id: dto.campus_id };
+  }
+
+  async setMyCampus(userId: number, campusId: number) {
+    const [campus] = await this.db
+      .select({ id: schema.campuses.id })
+      .from(schema.campuses)
+      .where(eq(schema.campuses.id, campusId));
+
+    if (!campus) {
+      throw new NotFoundException("Campus not found");
+    }
+
+    const [updated] = await this.db
+      .update(schema.users)
+      .set({ campusId })
+      .where(eq(schema.users.id, userId))
+      .returning({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      });
+
+    if (!updated) {
+      throw new NotFoundException("User not found");
+    }
+
+    await this.db
+      .update(schema.userCampuses)
+      .set({ isPrimary: false })
+      .where(eq(schema.userCampuses.userId, userId));
+
+    await this.db
+      .insert(schema.userCampuses)
+      .values({
+        userId,
+        campusId,
+        isPrimary: true,
+      })
+      .onConflictDoUpdate({
+        target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+        set: { isPrimary: true },
+      });
+
+    return updated;
+  }
+
+  async selfRegister(dto: CreateUserDto) {
+    const [campus] = await this.db
+      .select({ id: schema.campuses.id })
+      .from(schema.campuses)
+      .where(eq(schema.campuses.id, dto.campus_id));
+    if (!campus) {
+      throw new BadRequestException("Campus not found");
+    }
+
+    const [existing] = await this.db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.email, dto.email.trim().toLowerCase()));
+    if (existing) {
+      throw new BadRequestException("User with this email already exists");
+    }
+
+    const [user] = await this.db
+      .insert(schema.users)
+      .values({
+        name: dto.name.trim(),
+        email: dto.email.trim().toLowerCase(),
+        campusId: dto.campus_id,
+        address: dto.address,
+        googleId: dto.google_id,
+        status: "active",
+      })
+      .returning({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      });
+
+    await this.db
+      .insert(schema.userCampuses)
+      .values({
+        userId: user.id,
+        campusId: dto.campus_id,
+        isPrimary: true,
+      })
+      .onConflictDoUpdate({
+        target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+        set: { isPrimary: true },
+      });
+
+    const studentRoleId = await this.ensureRole("STUDENT");
+    await this.db
+      .insert(schema.userRole)
+      .values({
+        userId: user.id,
+        roleId: studentRoleId,
+      })
+      .onConflictDoNothing();
+
+    return user;
   }
 }

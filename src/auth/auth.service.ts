@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger, Inject, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { eq } from 'drizzle-orm';
@@ -30,19 +30,11 @@ export class AuthService {
         throw new UnauthorizedException('Email mismatch');
       }
 
-      // Find user in database
+      // Find user in database; auto-register if missing
       let user = await this.findUserByEmail(loginDto.email);
 
       if (!user) {
-        // User doesn't exist - you may want to either:
-        // 1. Auto-register them (commented out below)
-        // 2. Return error that admin needs to create account first
-        throw new UnauthorizedException(
-          'User not found. Please contact administrator to create your account.'
-        );
-        
-        // Uncomment below to auto-register users:
-        // user = await this.createUser(googleUser);
+        user = await this.autoRegisterUser(googleUser);
       }
 
       // Check if user is active
@@ -236,35 +228,82 @@ export class AuthService {
     }
   }
 
-  // OPTIONAL: Uncomment this if you want to auto-register users on first login
-  // Make sure to handle the campusId requirement appropriately
-  /*
-  private async createUser(googleUser: any) {
-    try {
-      // You'll need to determine how to assign campusId
-      // Option 1: Have a default campus
-      // Option 2: Extract from email domain
-      // Option 3: Require admin to pre-create users
-      
-      const defaultCampusId = 1; // Set your default campus ID
-      
-      const [newUser] = await this.db
-        .insert(schema.users)
-        .values({
-          email: googleUser.email,
-          name: googleUser.name || 'New User',
-          googleId: googleUser.googleId,
-          campusId: defaultCampusId,
-          status: 'active',
-        })
-        .returning();
+  private async ensureRole(name: string) {
+    const roleName = name.toUpperCase();
+    const [role] = await this.db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq(schema.roles.name, roleName));
+    if (role) return role.id;
 
-      this.logger.log(`New user created: ${newUser.email}`);
-      return newUser;
-    } catch (error) {
-      this.logger.error('Create user failed:', error);
-      throw new UnauthorizedException('Unable to create user');
-    }
+    const [created] = await this.db
+      .insert(schema.roles)
+      .values({
+        name: roleName,
+        description: `${roleName.toLowerCase()} role`,
+      })
+      .returning({ id: schema.roles.id });
+    return created.id;
   }
-  */
+
+  private async resolveDefaultCampusId() {
+    const preferred = process.env.DEFAULT_CAMPUS_ID
+      ? Number(process.env.DEFAULT_CAMPUS_ID)
+      : null;
+    if (preferred && !Number.isNaN(preferred)) {
+      const [campus] = await this.db
+        .select({ id: schema.campuses.id })
+        .from(schema.campuses)
+        .where(eq(schema.campuses.id, preferred));
+      if (campus) return campus.id;
+    }
+
+    const [firstCampus] = await this.db
+      .select({ id: schema.campuses.id })
+      .from(schema.campuses)
+      .limit(1);
+
+    if (!firstCampus) {
+      throw new BadRequestException(
+        "No campus found to auto-register user; please seed campuses first",
+      );
+    }
+    return firstCampus.id;
+  }
+
+  private async autoRegisterUser(googleUser: any) {
+    const campusId = await this.resolveDefaultCampusId();
+    const studentRoleId = await this.ensureRole("STUDENT");
+
+    const [newUser] = await this.db
+      .insert(schema.users)
+      .values({
+        email: googleUser.email,
+        name: googleUser.name || "New User",
+        googleId: googleUser.googleId,
+        campusId,
+        status: "active",
+      })
+      .returning();
+
+    await this.db.insert(schema.userCampuses).values({
+      userId: newUser.id,
+      campusId,
+      isPrimary: true,
+    }).onConflictDoUpdate({
+      target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+      set: { isPrimary: true },
+    });
+
+    await this.db
+      .insert(schema.userRole)
+      .values({
+        userId: newUser.id,
+        roleId: studentRoleId,
+      })
+      .onConflictDoNothing();
+
+    this.logger.log(`Auto-registered user ${newUser.email} as STUDENT`);
+    return newUser;
+  }
 }

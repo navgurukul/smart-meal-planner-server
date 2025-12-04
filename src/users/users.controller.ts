@@ -19,6 +19,7 @@ import { UsersService } from "./users.service";
 import { ApiBody, ApiOperation } from "@nestjs/swagger";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { Public } from "src/auth/decorators/public.decorator";
 
 @ApiTags("Users")
 // Swagger security scheme name must match the one defined in DocumentBuilder (`JWT-auth`).
@@ -26,6 +27,21 @@ import { UpdateUserDto } from "./dto/update-user.dto";
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get("all")
+  @ApiOperation({ summary: "List all users (any authenticated role)" })
+  listAll(@Req() req: RequestWithUser) {
+    return this.usersService.listAllBasic();
+  }
+
+  @Public()
+  @Post("register")
+  @ApiBody({ type: CreateUserDto })
+  @ApiOperation({ summary: "Self-register as student" })
+  selfRegister(@Body() body: CreateUserDto) {
+    return this.usersService.selfRegister(body);
+  }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Post()
@@ -36,6 +52,14 @@ export class UsersController {
     @Req() req: RequestWithUser,
   ) {
     return this.usersService.createUser(body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("me/campus")
+  @ApiBody({ type: SetUserCampusDto })
+  @ApiOperation({ summary: "Set my campus (self-serve)" })
+  setMyCampus(@Body() body: SetUserCampusDto, @Req() req: RequestWithUser) {
+    return this.usersService.setMyCampus(req.user!.id, body.campus_id);
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
