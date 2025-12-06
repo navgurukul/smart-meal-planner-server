@@ -47,6 +47,8 @@ export class AuthService {
         user = await this.updateUserGoogleId(user.id, googleUser.googleId);
       }
 
+      const campusName = await this.getCampusName(user.campusId);
+
       // Generate JWT token
       const roleRows = await this.db
         .select({ roleName: schema.roles.name })
@@ -60,6 +62,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         campusId: user.campusId,
+        campusName,
         status: user.status,
         roles,
       };
@@ -71,15 +74,16 @@ export class AuthService {
       return {
         access_token,
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          campusId: user.campusId,
-          status: user.status,
-          address: user.address,
-          roles,
-        },
-      };
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        campusId: user.campusId,
+        campusName,
+        status: user.status,
+        address: user.address,
+        roles,
+      },
+    };
     } catch (error) {
       this.logger.error('Login failed:', error);
       if (error instanceof UnauthorizedException) {
@@ -103,28 +107,45 @@ export class AuthService {
 
   async getProfile(user: any) {
     try {
-      const userProfile = await this.findUserById(user.sub);
-      
+      const userProfile =
+        (user?.sub && (await this.findUserById(user.sub))) ||
+        (user?.email && (await this.findUserByEmail(user.email)));
+
       if (!userProfile) {
-        throw new UnauthorizedException('User not found');
+        throw new NotFoundException('User not found');
       }
 
       if (userProfile.status !== 'active') {
         throw new UnauthorizedException('User account is not active');
       }
 
+      const roleRows = await this.db
+        .select({ roleName: schema.roles.name })
+        .from(schema.userRole)
+        .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
+        .where(eq(schema.userRole.userId, userProfile.id));
+      const campusName = await this.getCampusName(userProfile.campusId);
+
       return {
         id: userProfile.id,
         email: userProfile.email,
         name: userProfile.name,
         campusId: userProfile.campusId,
+        campusName,
         address: userProfile.address,
         status: userProfile.status,
         createdAt: userProfile.createdAt,
         updatedAt: userProfile.updatedAt,
+        roles: roleRows.map((r) => r.roleName),
       };
     } catch (error) {
       this.logger.error('Get profile failed:', error);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Unable to fetch user profile');
     }
   }
@@ -216,6 +237,15 @@ export class AuthService {
       this.logger.error('Find user by ID failed:', error);
       return null;
     }
+  }
+
+  private async getCampusName(campusId: number | null) {
+    if (!campusId) return null;
+    const [campus] = await this.db
+      .select({ name: schema.campuses.name })
+      .from(schema.campuses)
+      .where(eq(schema.campuses.id, campusId));
+    return campus?.name ?? null;
   }
 
   private async updateUserGoogleId(userId: number, googleId: string) {
