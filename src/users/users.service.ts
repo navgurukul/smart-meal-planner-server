@@ -305,6 +305,8 @@ export class UsersService {
     dto: AssignRolesDto,
     requester: AuthenticatedUser,
   ) {
+
+    console.log('Assigning roles:', dto.roles, 'to user ID:', userId);
     const superAdmin = this.isSuperAdmin(requester);
     const admin = this.isAdmin(requester);
     if (!superAdmin && !admin) {
@@ -349,6 +351,8 @@ export class UsersService {
 
     const targetCampus =
       targetUser.primaryCampusId ?? targetUser.campusId ?? null;
+    console.log('Target user campus:', targetCampus);
+    console.log('Requester campus IDs:', requester.campusIds);  
     if (!superAdmin) {
       if (!targetCampus || !requester.campusIds?.includes(targetCampus)) {
         throw new ForbiddenException("Campus access denied");
