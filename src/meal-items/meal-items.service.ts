@@ -36,4 +36,15 @@ export class MealItemsService {
 
     return created;
   }
+
+  async list() {
+    return this.db
+      .select({
+        id: schema.mealItems.id,
+        name: schema.mealItems.name,
+        description: schema.mealItems.description,
+        is_active: schema.mealItems.isActive,
+      })
+      .from(schema.mealItems);
+  }
 }

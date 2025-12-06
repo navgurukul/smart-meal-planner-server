@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { Get } from "@nestjs/common";
 import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { requireRole } from "src/auth/guards/require-role.guard";
 import type { RequestWithUser } from "src/middleware/auth.middleware";
@@ -16,5 +17,11 @@ export class MealItemsController {
   @Post()
   create(@Body() body: CreateMealItemDto, @Req() req: RequestWithUser) {
     return this.mealItemsService.create(body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  list() {
+    return this.mealItemsService.list();
   }
 }
