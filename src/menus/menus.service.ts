@@ -271,9 +271,10 @@ export class MenusService {
 
     const selections = await this.db
       .select({
+        id: schema.userMealRecord.id,
         date: schema.userMealRecord.mealDate,
         slotName: schema.mealSlots.name,
-        selected: schema.userMealRecord.ordered,
+        ordered: schema.userMealRecord.ordered,
       })
       .from(schema.userMealRecord)
       .innerJoin(
@@ -289,10 +290,14 @@ export class MenusService {
         ),
       );
 
-    const selectionMap = new Map<string, boolean>();
-    selections.forEach((s) =>
-      selectionMap.set(`${s.date}-${s.slotName}`, !!s.selected),
-    );
+    const selectionMap = new Map<string, { responded: boolean; ordered: boolean }>();
+    selections.forEach((s) => {
+      const dateKey = s.date.toString().slice(0, 10);
+      selectionMap.set(`${dateKey}-${s.slotName}`, {
+        responded: true,
+        ordered: !!s.ordered,
+      });
+    });
 
     const now = new Date();
     const result: Record<
@@ -303,7 +308,8 @@ export class MenusService {
           name: string;
           description: string | null;
           selected: boolean;
-          status: "SELECTED" | "NOT_SELECTED" | "CLOSED";
+          ordered: boolean;
+          status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
           deadline: string;
         };
       }
@@ -316,17 +322,25 @@ export class MenusService {
         String(row.slotStart),
         row.deadlineOffset,
       );
-      const selected =
-        selectionMap.get(`${row.date}-${row.slotName}`) ?? false;
-      const status =
-        selected ? "SELECTED" : now > deadlineDate ? "CLOSED" : "NOT_SELECTED";
+      const selection = selectionMap.get(`${dateKey}-${row.slotName}`);
+      const responded = selection?.responded ?? false;
+      const ordered = selection?.ordered ?? false;
+
+      const status = ordered
+        ? "SELECTED"
+        : responded
+          ? "NOT_INTERESTED"
+          : now > deadlineDate
+            ? "CLOSED"
+            : "NOT_SELECTED";
 
       if (!result[dateKey]) result[dateKey] = {};
       result[dateKey][row.slotName] = {
         meal_item_id: row.mealItemId,
         name: row.mealItemName,
         description: row.mealItemDescription,
-        selected,
+        selected: responded,
+        ordered,
         status,
         deadline: deadlineIst,
       };

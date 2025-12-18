@@ -141,6 +141,7 @@ export class MealSelectionsService {
             menuCampusJson: {}, // placeholder payload; can be expanded later
             ordered: item.selected,
             received: false,
+            reason: item.selected ? null : "NOT_INTERESTED",
           })
           .onConflictDoUpdate({
             target: [
@@ -153,6 +154,7 @@ export class MealSelectionsService {
               menuCampusJson: {},
               ordered: item.selected,
               received: false,
+              reason: item.selected ? null : "NOT_INTERESTED",
             },
           });
 
