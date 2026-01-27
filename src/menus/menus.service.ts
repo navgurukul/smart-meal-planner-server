@@ -170,6 +170,8 @@ export class MenusService {
         itemId: schema.mealItems.id,
         itemName: schema.mealItems.name,
         itemDescription: schema.mealItems.description,
+        slotStart: schema.campusMealSlots.startTime,
+        slotEnd: schema.campusMealSlots.endTime,
       })
       .from(schema.dailyMenuItems)
       .innerJoin(
@@ -184,6 +186,13 @@ export class MenusService {
         schema.mealItems,
         eq(schema.dailyMenuItems.mealItemId, schema.mealItems.id),
       )
+      .innerJoin(
+        schema.campusMealSlots,
+        and(
+          eq(schema.campusMealSlots.mealSlotId, schema.dailyMenuItems.mealSlotId),
+          eq(schema.campusMealSlots.campusId, campusId),
+        ),
+      )
       .where(
         and(
           eq(schema.dailyMenus.campusId, campusId),
@@ -195,7 +204,7 @@ export class MenusService {
 
     const result: Record<
       string,
-      { [slot: string]: { meal_item_id: number; name: string; description: string | null } }
+      { [slot: string]: { meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string } }
     > = {};
 
     for (const row of menus) {
@@ -207,6 +216,8 @@ export class MenusService {
         meal_item_id: row.itemId,
         name: row.itemName,
         description: row.itemDescription,
+        start_time: String(row.slotStart),
+        end_time: String(row.slotEnd),
       };
     }
 
@@ -236,6 +247,7 @@ export class MenusService {
         date: schema.dailyMenus.date,
         slotName: schema.mealSlots.name,
         slotStart: schema.campusMealSlots.startTime,
+        slotEnd: schema.campusMealSlots.endTime,
         deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
         mealItemId: schema.mealItems.id,
         mealItemName: schema.mealItems.name,
@@ -307,11 +319,12 @@ export class MenusService {
           meal_item_id: number;
           name: string;
           description: string | null;
+          start_time: string;
+          end_time: string;
           selected: boolean;
           ordered: boolean;
           status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
           deadline: string;
-          servingTime: string;
         };
       }
     > = {};
@@ -340,11 +353,12 @@ export class MenusService {
         meal_item_id: row.mealItemId,
         name: row.mealItemName,
         description: row.mealItemDescription,
+        start_time: String(row.slotStart),
+        end_time: String(row.slotEnd),
         selected: responded,
         ordered,
         status,
         deadline: deadlineIst,
-        servingTime: String(row.slotStart),
       };
     }
 
