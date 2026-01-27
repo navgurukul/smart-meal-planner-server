@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 import { eq } from 'drizzle-orm';
 import { OAuth2Client } from 'google-auth-library';
-import { DRIZZLE_DB } from 'src/db/constant';
+import { DRIZZLE_DB } from 'src/meal-items/db/constant';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../schema/schema'; // Import your database schema
 

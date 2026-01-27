@@ -6,7 +6,7 @@ import {
 import { Inject } from "@nestjs/common/decorators";
 import { and, eq, inArray, gte, lte } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
 import { UpsertMenuDto } from "./dto/upsert-menu.dto";
@@ -311,6 +311,7 @@ export class MenusService {
           ordered: boolean;
           status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
           deadline: string;
+          servingTime: string;
         };
       }
     > = {};
@@ -343,6 +344,7 @@ export class MenusService {
         ordered,
         status,
         deadline: deadlineIst,
+        servingTime: String(row.slotStart),
       };
     }
 

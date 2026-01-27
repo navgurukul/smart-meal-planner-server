@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
 
 @Injectable()
