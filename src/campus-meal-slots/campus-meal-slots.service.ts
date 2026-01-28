@@ -32,6 +32,13 @@ export class CampusMealSlotsService {
     throw new ForbiddenException("Not permitted for this campus");
   }
 
+  private sortSlotsByOrder(slots: Array<{ meal_slot: string }>) {
+    const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
+    return [...slots].sort((a, b) => {
+      return slotOrder.indexOf(a.meal_slot) - slotOrder.indexOf(b.meal_slot);
+    });
+  }
+
   async getByCampus(campusId: number) {
     if (!campusId) {
       throw new BadRequestException("campus_id is required");
@@ -65,7 +72,7 @@ export class CampusMealSlotsService {
     return {
       campus_id: campusId,
       campus_name: campus.name,
-      slots: rows,
+      slots: this.sortSlotsByOrder(rows),
     };
   }
 

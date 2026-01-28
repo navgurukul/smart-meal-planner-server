@@ -67,10 +67,25 @@ export class MenusService {
     throw new ForbiddenException("Not permitted for this campus");
   }
 
+  private sortSlotsByOrder(result: Record<string, any>) {
+    const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
+    const sortedResult: typeof result = {};
+    
+    for (const date of Object.keys(result).sort()) {
+      sortedResult[date] = {};
+      for (const slot of slotOrder) {
+        if (result[date][slot]) {
+          sortedResult[date][slot] = result[date][slot];
+        }
+      }
+    }
+    return sortedResult;
+  }
+
   async upsert(dto: UpsertMenuDto, user: AuthenticatedUser) {
     this.ensureMenuWriteAccess(dto.campus_id, user);
 
-    const validSlots = ["BREAKFAST", "LUNCH", "DINNER", "SNACKS"];
+    const validSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
     const slotsProvided = dto.items.map((i) => i.slot);
     const invalid = slotsProvided.filter((s) => !validSlots.includes(s));
     if (invalid.length) {
@@ -221,7 +236,7 @@ export class MenusService {
       };
     }
 
-    return result;
+    return this.sortSlotsByOrder(result);
   }
 
   async getMenuWithSelections(
@@ -361,7 +376,6 @@ export class MenusService {
         deadline: deadlineIst,
       };
     }
-
-    return result;
+    return this.sortSlotsByOrder(result);
   }
 }
