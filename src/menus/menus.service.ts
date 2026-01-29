@@ -325,7 +325,6 @@ export class MenusService {
         ordered: !!s.ordered,
       });
     });
-
     const now = new Date();
     const result: Record<
       string,
