@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/db/constant";
 import * as schema from "src/schema/schema";
@@ -141,6 +141,43 @@ export class UsersService {
       primaryCampusId: u.primaryCampusId ?? u.fallbackCampusId ?? null,
       roles: rolesByUser[u.id] ?? [],
     }));
+  }
+
+   async allAdmins(requester: AuthenticatedUser): Promise<
+    Array<{
+      id: number;
+      name: string | null;
+      email: string;
+      campusId: number | null;
+      status: string | null;
+    }>
+  > {
+    const superAdmin = this.isSuperAdmin(requester);
+    if (!superAdmin) {
+      throw new ForbiddenException("Not permitted");
+    }
+
+    const users = await this.db
+    .select({
+      id: schema.users.id,
+      name: schema.users.name,
+      email: schema.users.email,
+      campusId: schema.users.campusId,
+      status: schema.users.status,
+      role:  sql`ARRAY[${schema.roles.name}]`.as('role'), 
+    })
+    .from(schema.users)
+    .innerJoin(
+      schema.userRole,
+      eq(schema.userRole.userId, schema.users.id),
+    )
+    .innerJoin(
+      schema.roles,
+      eq(schema.roles.id, schema.userRole.roleId),
+    )
+    .where(eq(schema.roles.name, 'ADMIN'));
+
+    return users;
   }
 
   async listAllBasic(): Promise<

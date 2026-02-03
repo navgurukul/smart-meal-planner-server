@@ -44,6 +44,17 @@ export class UsersController {
     return this.usersService.selfRegister(body);
   }
 
+  @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+  @Get("all/admins")
+  @ApiOperation({ summary: "List all admins (super-admin only)" })
+  listAllAdmins(
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.allAdmins(
+      req.user!,
+    );
+  }
+
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Post()
   @ApiBody({ type: CreateUserDto })
