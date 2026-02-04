@@ -14,6 +14,7 @@ import { QrTokenModule } from "./qr-token/qr-token.module";
 import { UsersModule } from "./users/users.module";
 import { CampusMealSlotsModule } from "./campus-meal-slots/campus-meal-slots.module";
 import { CampusesModule } from "./campuses/campuses.module";
+import { MealHistoryModule } from "./meal-history/meal-history.module";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CampusesModule } from "./campuses/campuses.module";
     CampusChangeRequestsModule,
     MenusModule,
     MealSelectionsModule,
+    MealHistoryModule,
     MealItemsModule,
     KitchenModule,
     QrTokenModule,
