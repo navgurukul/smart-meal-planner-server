@@ -6,7 +6,7 @@ import {
 import { Inject } from "@nestjs/common/decorators";
 import { and, eq, sql, gte, lte } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
 

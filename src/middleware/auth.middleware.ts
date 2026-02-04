@@ -9,7 +9,7 @@ import { Inject, ForbiddenException } from "@nestjs/common";
 import { NextFunction, Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
 
 export interface AuthenticatedUser {

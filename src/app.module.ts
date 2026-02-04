@@ -4,7 +4,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { CampusChangeRequestsModule } from "./campus-change-requests/campus-change-requests.module";
-import { DrizzleModule } from "./db/drizzle.module";
+import { DrizzleModule } from "src/meal-items/db/drizzle.module";
 import { AuthMiddleware } from "./middleware/auth.middleware";
 import { MealItemsModule } from "./meal-items/meal-items.module";
 import { MealSelectionsModule } from "./meal-selections/meal-selections.module";

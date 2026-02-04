@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/com
 import { Inject } from "@nestjs/common/decorators";
 import { eq, inArray } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
 import {
@@ -30,6 +30,13 @@ export class CampusMealSlotsService {
     if (this.isSuperAdmin(user)) return;
     if (this.isAdmin(user) && user.campusIds?.includes(campusId)) return;
     throw new ForbiddenException("Not permitted for this campus");
+  }
+
+  private sortSlotsByOrder(slots: Array<{ meal_slot: string }>) {
+    const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
+    return [...slots].sort((a, b) => {
+      return slotOrder.indexOf(a.meal_slot) - slotOrder.indexOf(b.meal_slot);
+    });
   }
 
   async getByCampus(campusId: number) {
@@ -65,7 +72,7 @@ export class CampusMealSlotsService {
     return {
       campus_id: campusId,
       campus_name: campus.name,
-      slots: rows,
+      slots: this.sortSlotsByOrder(rows),
     };
   }
 

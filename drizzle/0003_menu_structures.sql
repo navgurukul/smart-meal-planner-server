@@ -1,4 +1,4 @@
-CREATE TYPE "smps_db"."smps_meal_slot_name" AS ENUM ('BREAKFAST', 'LUNCH', 'DINNER', 'SNACKS');
+CREATE TYPE "smps_db"."smps_meal_slot_name" AS ENUM ('BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER');
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "smps_db"."smps_meal_slots" (
   "id" serial PRIMARY KEY NOT NULL,

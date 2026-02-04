@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
 import { eq } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
 import { CreateMealItemDto } from "./dto/create-meal-item.dto";

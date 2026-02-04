@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
-import { DrizzleModule } from 'src/db/drizzle.module';
+import { DrizzleModule } from 'src/meal-items/db/drizzle.module';
 
 @Module({
   imports: [

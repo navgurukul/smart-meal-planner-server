@@ -187,8 +187,8 @@ export const campusChangeRequests = smps_db.table(
 export const mealSlotEnum = pgEnum("smps_meal_slot_name", [
   "BREAKFAST",
   "LUNCH",
-  "DINNER",
   "SNACKS",
+  "DINNER",
 ]);
 
 export const mealSlots = smps_db.table(

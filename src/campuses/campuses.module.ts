@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { DrizzleModule } from "src/db/drizzle.module";
+import { DrizzleModule } from "src/meal-items/db/drizzle.module";
 import { CampusesController } from "./campuses.controller";
 import { CampusesService } from "./campuses.service";
 

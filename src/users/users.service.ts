@@ -7,7 +7,7 @@ import {
 import { Inject } from "@nestjs/common/decorators";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
 import { AuthenticatedUser } from "src/middleware/auth.middleware";
 import { AssignRolesDto } from "./dto/assign-roles.dto";

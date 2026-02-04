@@ -10,7 +10,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 
-const mealSlots = ["BREAKFAST", "LUNCH", "DINNER", "SNACKS"] as const;
+const mealSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"] as const;
 export type MealSlotName = (typeof mealSlots)[number];
 
 class SelectionInput {

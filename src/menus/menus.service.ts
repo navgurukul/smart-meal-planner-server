@@ -6,7 +6,7 @@ import {
 import { Inject } from "@nestjs/common/decorators";
 import { and, eq, inArray, gte, lte } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
 import { UpsertMenuDto } from "./dto/upsert-menu.dto";
@@ -67,10 +67,25 @@ export class MenusService {
     throw new ForbiddenException("Not permitted for this campus");
   }
 
+  private sortSlotsByOrder(result: Record<string, any>) {
+    const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
+    const sortedResult: typeof result = {};
+    
+    for (const date of Object.keys(result).sort()) {
+      sortedResult[date] = {};
+      for (const slot of slotOrder) {
+        if (result[date][slot]) {
+          sortedResult[date][slot] = result[date][slot];
+        }
+      }
+    }
+    return sortedResult;
+  }
+
   async upsert(dto: UpsertMenuDto, user: AuthenticatedUser) {
     this.ensureMenuWriteAccess(dto.campus_id, user);
 
-    const validSlots = ["BREAKFAST", "LUNCH", "DINNER", "SNACKS"];
+    const validSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
     const slotsProvided = dto.items.map((i) => i.slot);
     const invalid = slotsProvided.filter((s) => !validSlots.includes(s));
     if (invalid.length) {
@@ -170,6 +185,8 @@ export class MenusService {
         itemId: schema.mealItems.id,
         itemName: schema.mealItems.name,
         itemDescription: schema.mealItems.description,
+        slotStart: schema.campusMealSlots.startTime,
+        slotEnd: schema.campusMealSlots.endTime,
       })
       .from(schema.dailyMenuItems)
       .innerJoin(
@@ -184,6 +201,13 @@ export class MenusService {
         schema.mealItems,
         eq(schema.dailyMenuItems.mealItemId, schema.mealItems.id),
       )
+      .innerJoin(
+        schema.campusMealSlots,
+        and(
+          eq(schema.campusMealSlots.mealSlotId, schema.dailyMenuItems.mealSlotId),
+          eq(schema.campusMealSlots.campusId, campusId),
+        ),
+      )
       .where(
         and(
           eq(schema.dailyMenus.campusId, campusId),
@@ -195,7 +219,7 @@ export class MenusService {
 
     const result: Record<
       string,
-      { [slot: string]: { meal_item_id: number; name: string; description: string | null } }
+      { [slot: string]: { meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string } }
     > = {};
 
     for (const row of menus) {
@@ -207,10 +231,12 @@ export class MenusService {
         meal_item_id: row.itemId,
         name: row.itemName,
         description: row.itemDescription,
+        start_time: String(row.slotStart),
+        end_time: String(row.slotEnd),
       };
     }
 
-    return result;
+    return this.sortSlotsByOrder(result);
   }
 
   async getMenuWithSelections(
@@ -236,6 +262,7 @@ export class MenusService {
         date: schema.dailyMenus.date,
         slotName: schema.mealSlots.name,
         slotStart: schema.campusMealSlots.startTime,
+        slotEnd: schema.campusMealSlots.endTime,
         deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
         mealItemId: schema.mealItems.id,
         mealItemName: schema.mealItems.name,
@@ -298,7 +325,6 @@ export class MenusService {
         ordered: !!s.ordered,
       });
     });
-
     const now = new Date();
     const result: Record<
       string,
@@ -307,6 +333,8 @@ export class MenusService {
           meal_item_id: number;
           name: string;
           description: string | null;
+          start_time: string;
+          end_time: string;
           selected: boolean;
           ordered: boolean;
           status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
@@ -339,13 +367,14 @@ export class MenusService {
         meal_item_id: row.mealItemId,
         name: row.mealItemName,
         description: row.mealItemDescription,
+        start_time: String(row.slotStart),
+        end_time: String(row.slotEnd),
         selected: responded,
         ordered,
         status,
         deadline: deadlineIst,
       };
     }
-
-    return result;
+    return this.sortSlotsByOrder(result);
   }
 }
