@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { DRIZZLE_DB } from "src/db/constant";
+import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
 import { User } from 'src/users/entities/user.entity';
 import { studentDataDto } from "./dto/bulk-upload.dto";
@@ -65,7 +65,6 @@ export class BulkUploadService {
             .from(users)
             .where(eq(users.email, users_data[i]['email']));
 
-            console.log('userInfo', userInfo);
             if (userInfo.length > 0) {
                 if (userInfo[0].name !== users_data[i]['name']) {
                     await this.db
@@ -74,7 +73,6 @@ export class BulkUploadService {
                     .where(sql`${users.email} = ${users_data[i]['email']}`);
                 } else {
                     b += 1;
-                    console.log('Coming here - user exists with same name');
                     userReport.push({
                         email: userInfo[0].email,
                         message: `The students have been already in the campus`,
@@ -82,11 +80,8 @@ export class BulkUploadService {
                 }
             }
             if (userInfo.length === 0) {
-                console.log('Creating user: ', users_data[i]['email']);
-                console.log('newUser', newUser)
                 userInfo = await this.db.insert(users).values(newUser).returning();
 
-                console.log('userInfo after create', userInfo);
                 c += 1;
                 const now = new Date();
                 enroling = {
@@ -115,10 +110,8 @@ export class BulkUploadService {
             messageParts.push(`${b} students has been already in the ${users_data[0]['campus_name']} campus`);
         }
 
-        console.log('Final message:', messageParts);
         let message = messageParts.join(' & ');
 
-        // console.log('Final message:', message);
         return [
             null,
             {
