@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Delete,
   Query,
   Req,
   UseGuards,
@@ -123,6 +124,16 @@ export class UsersController {
     @Req() req: RequestWithUser,
   ) {
     return this.usersService.updateUser(userId, body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiOperation({ summary: "Delete user (admin/super-admin)" })
+  @Delete(":userId/delete")
+  deleteUser(
+  @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.deleteUser(userId, req.user!);
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))

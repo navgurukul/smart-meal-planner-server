@@ -15,6 +15,7 @@ import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { SelfUpdateDto } from "./dto/self-update.dto";
+import { log } from "util";
 
 @Injectable()
 export class UsersService {
@@ -353,6 +354,31 @@ export class UsersService {
     }
 
     return updated;
+  }
+
+  async deleteUser(userId: number, requester: AuthenticatedUser) {
+    try {
+      if (!this.isSuperAdmin(requester) && !this.isAdmin(requester)) {
+        throw new ForbiddenException("Not permitted");
+      }
+
+      const [existingUser] = await this.db
+        .select({
+          id: schema.users.id,
+          campusId: schema.users.campusId,
+        })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId));
+      if (!existingUser) {
+        throw new NotFoundException("User not found");
+      }
+
+      await this.db.delete(schema.users).where(eq(schema.users.id, userId));
+      return { status: 'success', message: 'User deleted successfully', code: 200 };
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return { status: 'error', message: e.message, code: 500 };
+    }
   }
 
   async assignRoles(
