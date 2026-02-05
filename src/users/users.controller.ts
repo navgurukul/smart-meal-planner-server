@@ -16,7 +16,7 @@ import type { RequestWithUser } from "src/middleware/auth.middleware";
 import { AssignRolesDto } from "./dto/assign-roles.dto";
 import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { UsersService } from "./users.service";
-import { ApiBody, ApiOperation } from "@nestjs/swagger";
+import { ApiBody, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { Public } from "src/auth/decorators/public.decorator";
@@ -47,10 +47,16 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
   @Get("all/admins")
   @ApiOperation({ summary: "List all admins (super-admin only)" })
+  @ApiQuery({ name: "campus_id", required: false, type: Number })
   listAllAdmins(
     @Req() req: RequestWithUser,
+    @Query("role") role: string,
+    @Query("campus_id") campusId?: string,
   ) {
+    const parsedCampusId = campusId ? Number(campusId) : null;
     return this.usersService.allAdmins(
+      Number.isNaN(parsedCampusId) ? null : parsedCampusId,
+      role,
       req.user!,
     );
   }

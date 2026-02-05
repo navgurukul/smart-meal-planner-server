@@ -114,6 +114,8 @@ export class UsersService {
       return [];
     }
 
+    console.log('baseUsers', baseUsers)
+
     const userIds = baseUsers.map((u) => u.id);
     const roleRows = await this.db
       .select({
@@ -143,7 +145,9 @@ export class UsersService {
     }));
   }
 
-   async allAdmins(requester: AuthenticatedUser): Promise<
+   async allAdmins(campusId: number | null,
+    role: string ,
+    requester: AuthenticatedUser): Promise<
     Array<{
       id: number;
       name: string | null;
@@ -157,16 +161,21 @@ export class UsersService {
       throw new ForbiddenException("Not permitted");
     }
 
+    const queryBuild = campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId)) : 
+    eq(schema.roles.name, role);
+
     const users = await this.db
     .select({
       id: schema.users.id,
       name: schema.users.name,
       email: schema.users.email,
       campusId: schema.users.campusId,
+      campusName: schema.campuses.name,
       status: schema.users.status,
       role:  sql`ARRAY[${schema.roles.name}]`.as('role'), 
     })
     .from(schema.users)
+    .leftJoin(schema.campuses, eq(schema.campuses.id, schema.users.campusId))
     .innerJoin(
       schema.userRole,
       eq(schema.userRole.userId, schema.users.id),
@@ -175,7 +184,7 @@ export class UsersService {
       schema.roles,
       eq(schema.roles.id, schema.userRole.roleId),
     )
-    .where(eq(schema.roles.name, 'ADMIN'));
+    .where(queryBuild);
 
     return users;
   }
