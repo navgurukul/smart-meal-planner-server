@@ -114,8 +114,6 @@ export class UsersService {
       return [];
     }
 
-    console.log('baseUsers', baseUsers)
-
     const userIds = baseUsers.map((u) => u.id);
     const roleRows = await this.db
       .select({
@@ -261,7 +259,13 @@ export class UsersService {
       set: { isPrimary: true },
     });
 
-    return user;
+    const roleId = await this.ensureRole(dto.role);
+    await this.db.insert(schema.userRole).values({
+      userId: user.id,
+      roleId: roleId,
+    });
+
+    return {...user, role: dto.role};
   }
 
   async updateUser(
