@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, SQL, sql } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
@@ -145,7 +145,8 @@ export class UsersService {
 
    async allAdmins(campusId: number | null,
     role: string ,
-    requester: AuthenticatedUser): Promise<
+    requester: AuthenticatedUser,
+    searchTerm?: string | number ): Promise<
     Array<{
       id: number;
       name: string | null;
@@ -155,12 +156,16 @@ export class UsersService {
     }>
   > {
     const superAdmin = this.isSuperAdmin(requester);
-    if (!superAdmin) {
+    const admin = this.isAdmin(requester);
+    if (!superAdmin && !admin) {
       throw new ForbiddenException("Not permitted");
     }
 
-    const queryBuild = campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId)) : 
-    eq(schema.roles.name, role);
+     const queryBuild = campusId && searchTerm ? 
+     and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId), ilike(schema.users.name, `${searchTerm}%`)) 
+     :campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId)) 
+     : searchTerm ? and(eq(schema.roles.name, role), ilike(schema.users.name, `${searchTerm}%`))
+    : eq(schema.roles.name, role);
 
     const users = await this.db
     .select({
