@@ -28,6 +28,11 @@ export class CreateUserDto {
   @IsPositive()
   campus_id: number;
 
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  @IsPositive()
+  role: string;
+
   @ApiProperty({ example: "123, MG Road, Bangalore", required: false })
   @IsString()
   @IsOptional()

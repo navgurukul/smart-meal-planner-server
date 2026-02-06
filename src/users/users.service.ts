@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, SQL, sql } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
@@ -15,6 +15,7 @@ import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { SelfUpdateDto } from "./dto/self-update.dto";
+import { log } from "util";
 
 @Injectable()
 export class UsersService {
@@ -143,7 +144,10 @@ export class UsersService {
     }));
   }
 
-   async allAdmins(requester: AuthenticatedUser): Promise<
+   async allAdmins(campusId: number | null,
+    role: string ,
+    requester: AuthenticatedUser,
+    searchTerm?: string | number ): Promise<
     Array<{
       id: number;
       name: string | null;
@@ -153,9 +157,16 @@ export class UsersService {
     }>
   > {
     const superAdmin = this.isSuperAdmin(requester);
-    if (!superAdmin) {
+    const admin = this.isAdmin(requester);
+    if (!superAdmin && !admin) {
       throw new ForbiddenException("Not permitted");
     }
+
+     const queryBuild = campusId && searchTerm ? 
+     and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId), ilike(schema.users.name, `${searchTerm}%`)) 
+     :campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId)) 
+     : searchTerm ? and(eq(schema.roles.name, role), ilike(schema.users.name, `${searchTerm}%`))
+    : eq(schema.roles.name, role);
 
     const users = await this.db
     .select({
@@ -163,10 +174,12 @@ export class UsersService {
       name: schema.users.name,
       email: schema.users.email,
       campusId: schema.users.campusId,
+      campusName: schema.campuses.name,
       status: schema.users.status,
       role:  sql`ARRAY[${schema.roles.name}]`.as('role'), 
     })
     .from(schema.users)
+    .leftJoin(schema.campuses, eq(schema.campuses.id, schema.users.campusId))
     .innerJoin(
       schema.userRole,
       eq(schema.userRole.userId, schema.users.id),
@@ -175,7 +188,7 @@ export class UsersService {
       schema.roles,
       eq(schema.roles.id, schema.userRole.roleId),
     )
-    .where(eq(schema.roles.name, 'ADMIN'));
+    .where(queryBuild);
 
     return users;
   }
@@ -252,7 +265,13 @@ export class UsersService {
       set: { isPrimary: true },
     });
 
-    return user;
+    const roleId = await this.ensureRole(dto.role);
+    await this.db.insert(schema.userRole).values({
+      userId: user.id,
+      roleId: roleId,
+    });
+
+    return {...user, role: dto.role};
   }
 
   async updateUser(
@@ -335,6 +354,31 @@ export class UsersService {
     }
 
     return updated;
+  }
+
+  async deleteUser(userId: number, requester: AuthenticatedUser) {
+    try {
+      if (!this.isSuperAdmin(requester) && !this.isAdmin(requester)) {
+        throw new ForbiddenException("Not permitted");
+      }
+
+      const [existingUser] = await this.db
+        .select({
+          id: schema.users.id,
+          campusId: schema.users.campusId,
+        })
+        .from(schema.users)
+        .where(eq(schema.users.id, userId));
+      if (!existingUser) {
+        throw new NotFoundException("User not found");
+      }
+
+      await this.db.delete(schema.users).where(eq(schema.users.id, userId));
+      return { status: 'success', message: 'User deleted successfully', code: 200 };
+    } catch (e) {
+      log(`error: ${e.message}`);
+      return { status: 'error', message: e.message, code: 500 };
+    }
   }
 
   async assignRoles(

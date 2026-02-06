@@ -15,6 +15,7 @@ import { UsersModule } from "./users/users.module";
 import { CampusMealSlotsModule } from "./campus-meal-slots/campus-meal-slots.module";
 import { CampusesModule } from "./campuses/campuses.module";
 import { MealHistoryModule } from "./meal-history/meal-history.module";
+import { BulkUploadModule } from "./bulk-upload/bulk-upload.mudule";
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { MealHistoryModule } from "./meal-history/meal-history.module";
     CampusMealSlotsModule,
     CampusesModule,
     AuthModule,
+    BulkUploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],
