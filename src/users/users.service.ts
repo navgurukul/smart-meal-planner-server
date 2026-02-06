@@ -32,7 +32,7 @@ export class UsersService {
     return user.roles?.includes("ADMIN");
   }
 
-  private async ensureRole(name: string) {
+  async ensureRole(name: string) {
     const roleName = name.toUpperCase();
     const [role] = await this.db
       .select({ id: schema.roles.id })

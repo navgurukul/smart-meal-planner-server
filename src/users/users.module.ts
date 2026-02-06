@@ -7,5 +7,6 @@ import { DrizzleModule } from "src/meal-items/db/drizzle.module";
   imports: [DrizzleModule],
   controllers: [UsersController],
   providers: [UsersService],
+  exports: [UsersService],
 })
 export class UsersModule {}
