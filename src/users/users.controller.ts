@@ -103,6 +103,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Get()
   @ApiOperation({ summary: "List all students (admin/super-admin) by campus" })
+  @ApiQuery({ name: "campus_id", required: false, type: Number })
   list(
     @Req() req: RequestWithUser,
     @Query("campus_id") campusId?: string,
