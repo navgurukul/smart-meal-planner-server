@@ -369,9 +369,18 @@ export class UsersService {
         })
         .from(schema.users)
         .where(eq(schema.users.id, userId));
+
       if (!existingUser) {
         throw new NotFoundException("User not found");
       }
+
+      await this.db
+      .delete(schema.userRole)
+      .where(eq(schema.userRole.userId, userId));
+
+      await this.db
+      .delete(schema.userCampuses)
+      .where(eq(schema.userCampuses.userId, userId));
 
       await this.db.delete(schema.users).where(eq(schema.users.id, userId));
       return { status: 'success', message: 'User deleted successfully', code: 200 };
