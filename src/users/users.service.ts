@@ -53,16 +53,18 @@ export class UsersService {
   async listUsers(
     campusId: number | null,
     requester: AuthenticatedUser,
-  ): Promise<
-    Array<{
-      id: number;
-      name: string | null;
-      email: string;
-      status: string | null;
-      primaryCampusId: number | null;
-      roles: string[];
-    }>
-  > {
+  ): Promise<{
+      users: Array<{
+        id: number;
+        name: string | null;
+        email: string;
+        status: string | null;
+        primaryCampusId: number | null;
+        roles: string[];
+      }>;
+      adminCount: number; 
+      studentCount: number;
+  }> {
     const superAdmin = this.isSuperAdmin(requester);
     const admin = this.isAdmin(requester);
     if (!superAdmin && !admin) {
@@ -112,7 +114,7 @@ export class UsersService {
       );
 
     if (!baseUsers.length) {
-      return [];
+      return { users: [], adminCount: 0, studentCount: 0 };
     }
 
     const userIds = baseUsers.map((u) => u.id);
@@ -134,7 +136,7 @@ export class UsersService {
       {},
     );
 
-    return baseUsers.map((u) => ({
+    const users = baseUsers.map((u) => ({
       id: u.id,
       name: u.name,
       email: u.email,
@@ -142,6 +144,16 @@ export class UsersService {
       primaryCampusId: u.primaryCampusId ?? u.fallbackCampusId ?? null,
       roles: rolesByUser[u.id] ?? [],
     }));
+
+    const adminCount = users.filter(u =>
+        u.roles.includes("ADMIN")
+      ).length;
+
+      const studentCount = users.filter(u =>
+        u.roles.includes("STUDENT")
+      ).length;
+
+    return { users, adminCount, studentCount };
   }
 
    async allAdmins(campusId: number | null,
