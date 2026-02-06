@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Delete,
   Query,
   Req,
   UseGuards,
@@ -44,20 +45,31 @@ export class UsersController {
     return this.usersService.selfRegister(body);
   }
 
-  @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Get("all/admins")
   @ApiOperation({ summary: "List all admins (super-admin only)" })
   @ApiQuery({ name: "campus_id", required: false, type: Number })
+  @ApiQuery({
+    name: 'searchTerm',
+    required: false,
+    type: String,
+    description: 'Search by name or id in bootcamps',
+  })
   listAllAdmins(
     @Req() req: RequestWithUser,
     @Query("role") role: string,
     @Query("campus_id") campusId?: string,
+    @Query('searchTerm') searchTerm?: string,
   ) {
     const parsedCampusId = campusId ? Number(campusId) : null;
+    const searchTermAsNumber = !isNaN(Number(searchTerm))
+      ? Number(searchTerm)
+      : searchTerm;
     return this.usersService.allAdmins(
       Number.isNaN(parsedCampusId) ? null : parsedCampusId,
       role,
       req.user!,
+      searchTermAsNumber,
     );
   }
 
@@ -112,6 +124,16 @@ export class UsersController {
     @Req() req: RequestWithUser,
   ) {
     return this.usersService.updateUser(userId, body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiOperation({ summary: "Delete user (admin/super-admin)" })
+  @Delete(":userId/delete")
+  deleteUser(
+  @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.deleteUser(userId, req.user!);
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
