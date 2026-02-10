@@ -11,12 +11,14 @@ import {
   sql,
 } from 'drizzle-orm';
 import { error, log } from 'console';
+import { UsersService } from "src/users/users.service";
 
 @Injectable()
 export class BulkUploadService {
       constructor(
         @Inject(DRIZZLE_DB)
         private readonly db: NodePgDatabase<typeof schema>,
+        private readonly usersService: UsersService,
       ) {}
 
     async addStudentToCampus(
@@ -81,6 +83,12 @@ export class BulkUploadService {
             }
             if (userInfo.length === 0) {
                 userInfo = await this.db.insert(users).values(newUser).returning();
+
+                const roleId = await this.usersService.ensureRole("STUDENT");
+                await this.db.insert(schema.userRole).values({
+                    userId: userInfo[0].id,
+                    roleId: roleId,
+                });
 
                 c += 1;
                 const now = new Date();
