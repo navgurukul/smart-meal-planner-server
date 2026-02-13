@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
-import { and, eq, ilike, inArray, or, SQL, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, SQL, sql, asc } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
@@ -111,8 +111,8 @@ export class UsersService {
               eq(schema.userCampuses.campusId, resolvedCampusId),
             )
           : undefined,
-      );
-
+      )
+      .orderBy(sql`LOWER(${schema.users.name})`);
     if (!baseUsers.length) {
       return { users: [], adminCount: 0, studentCount: 0 };
     }
@@ -200,7 +200,8 @@ export class UsersService {
       schema.roles,
       eq(schema.roles.id, schema.userRole.roleId),
     )
-    .where(queryBuild);
+    .where(queryBuild)
+    .orderBy(sql`LOWER(${schema.users.name})`);
 
     return users;
   }
