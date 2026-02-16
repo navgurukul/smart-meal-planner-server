@@ -56,7 +56,7 @@ export class BulkUploadService {
                     b += 1;
                     userReport.push({
                         email: userInfo[0].email,
-                        message: `The students have been already in the campus`,
+                        message: `The student is already in the campus`,
                     });
                 }
                 if (userInfo.length === 0) {
@@ -90,20 +90,21 @@ export class BulkUploadService {
             let messageParts: string[] = [];
 
             if (c > 0) {
-                messageParts.push(`${c} students successfully added to the ${users_data[0]['campus_name']} campus`);
+                messageParts.push(`${c} ${c > 1 ? 'students are' : 'student is'} successfully added to the ${users_data[0]['campus_name']} campus`);
             }
             if (b > 0) {
-                messageParts.push(`${b} students has been already in the ${users_data[0]['campus_name']} campus`);
+                messageParts.push(`${b} ${b > 1 ? 'students are' : 'student is'} already in the ${users_data[0]['campus_name']} campus`);
             }
 
             let message = messageParts.join(' & ');
+            const fullMessage = `Out of ${users_data.length} ${users_data.length > 1 ? 'students' : 'student'}, ${message}`;
 
             return [
                 null,
                 {
                     status: 'success',
                     code: 200,
-                    message: message,
+                    message: fullMessage,
                     students_enrolled: userReport
                 },
             ];
