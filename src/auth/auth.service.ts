@@ -34,7 +34,7 @@ export class AuthService {
       let user = await this.findUserByEmail(loginDto.email);
 
       if (!user) {
-        user = await this.autoRegisterUser(googleUser);
+        throw new UnauthorizedException("You're not assigned in any campus");
       }
 
       // Check if user is active
@@ -74,16 +74,16 @@ export class AuthService {
       return {
         access_token,
         user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        campusId: user.campusId,
-        campusName,
-        status: user.status,
-        address: user.address,
-        roles,
-      },
-    };
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          campusId: user.campusId,
+          campusName,
+          status: user.status,
+          address: user.address,
+          roles,
+        },
+      };
     } catch (error) {
       this.logger.error('Login failed:', error);
       if (error instanceof UnauthorizedException) {
@@ -95,11 +95,11 @@ export class AuthService {
 
   async logout(user: any) {
     this.logger.log(`User logged out: ${user.email}`);
-    
+
     // If you want to implement token blacklisting, add logic here
     // For now, we'll just return a success message
     // The client should discard the token on their end
-    
+
     return {
       message: 'Successfully logged out',
     };
@@ -154,7 +154,7 @@ export class AuthService {
     try {
       // Verify user still exists and is active
       const userProfile = await this.findUserById(user.sub);
-      
+
       if (!userProfile) {
         throw new UnauthorizedException('User not found');
       }
@@ -192,7 +192,7 @@ export class AuthService {
       });
 
       const payload = ticket.getPayload();
-      
+
       if (!payload) {
         throw new UnauthorizedException('Invalid Google token');
       }
