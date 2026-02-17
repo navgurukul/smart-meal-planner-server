@@ -16,7 +16,7 @@ export class MenusService {
   constructor(
     @Inject(DRIZZLE_DB)
     private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) { }
 
   private isSuperAdmin(user: AuthenticatedUser) {
     return user.roles?.includes("SUPER_ADMIN");
@@ -70,7 +70,7 @@ export class MenusService {
   private sortSlotsByOrder(result: Record<string, any>) {
     const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
     const sortedResult: typeof result = {};
-    
+
     for (const date of Object.keys(result).sort()) {
       sortedResult[date] = {};
       for (const slot of slotOrder) {
@@ -302,6 +302,7 @@ export class MenusService {
         date: schema.userMealRecord.mealDate,
         slotName: schema.mealSlots.name,
         ordered: schema.userMealRecord.ordered,
+        received: schema.userMealRecord.received,
       })
       .from(schema.userMealRecord)
       .innerJoin(
@@ -317,13 +318,49 @@ export class MenusService {
         ),
       );
 
-    const selectionMap = new Map<string, { responded: boolean; ordered: boolean }>();
+    const receipts = await this.db
+      .select({
+        date: schema.mealReceipts.date,
+        slotName: schema.mealSlots.name,
+      })
+      .from(schema.mealReceipts)
+      .innerJoin(
+        schema.mealSlots,
+        eq(schema.mealReceipts.mealSlotId, schema.mealSlots.id),
+      )
+      .where(
+        and(
+          eq(schema.mealReceipts.userId, user.id),
+          eq(schema.mealReceipts.campusId, campusId),
+          gte(schema.mealReceipts.date, from),
+          lte(schema.mealReceipts.date, to),
+        ),
+      );
+
+    const selectionMap = new Map<string, { responded: boolean; ordered: boolean; received: boolean }>();
+
     selections.forEach((s) => {
       const dateKey = s.date.toString().slice(0, 10);
       selectionMap.set(`${dateKey}-${s.slotName}`, {
         responded: true,
         ordered: !!s.ordered,
+        received: !!s.received,
       });
+    });
+
+    receipts.forEach((r) => {
+      const dateKey = r.date.toString().slice(0, 10);
+      const key = `${dateKey}-${r.slotName}`;
+      const existing = selectionMap.get(key);
+      if (existing) {
+        existing.received = true;
+      } else {
+        selectionMap.set(key, {
+          responded: false,
+          ordered: false,
+          received: true,
+        });
+      }
     });
     const now = new Date();
     const result: Record<
@@ -337,6 +374,7 @@ export class MenusService {
           end_time: string;
           selected: boolean;
           ordered: boolean;
+          received: boolean;
           status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
           deadline: string;
         };
@@ -353,6 +391,7 @@ export class MenusService {
       const selection = selectionMap.get(`${dateKey}-${row.slotName}`);
       const responded = selection?.responded ?? false;
       const ordered = selection?.ordered ?? false;
+      const received = selection?.received ?? false;
 
       const status = ordered
         ? "SELECTED"
@@ -371,6 +410,7 @@ export class MenusService {
         end_time: String(row.slotEnd),
         selected: responded,
         ordered,
+        received,
         status,
         deadline: deadlineIst,
       };
