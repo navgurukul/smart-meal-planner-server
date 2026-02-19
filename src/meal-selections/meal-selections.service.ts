@@ -16,7 +16,7 @@ export class MealSelectionsService {
   constructor(
     @Inject(DRIZZLE_DB)
     private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) { }
 
   private ensureStudent(user: AuthenticatedUser) {
     if (!user.roles?.includes("STUDENT")) {
