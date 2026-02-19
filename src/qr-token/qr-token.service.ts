@@ -17,7 +17,7 @@ export class QrTokenService {
   constructor(
     @Inject(DRIZZLE_DB)
     private readonly db: NodePgDatabase<typeof schema>,
-  ) {}
+  ) { }
 
   private ensureKitchenRole(user: AuthenticatedUser) {
     const allowed = ["INCHARGE", "KITCHEN_STAFF", "ADMIN", "SUPER_ADMIN"];
@@ -45,7 +45,7 @@ export class QrTokenService {
     return h * 60 + m;
   }
 
-  private async resolveCurrentSlot(campusId: number) {
+  private async getSlots(campusId: number) {
     const slots = await this.db
       .select({
         id: schema.mealSlots.id,
@@ -84,6 +84,28 @@ export class QrTokenService {
       )
       .where(eq(schema.campusMealSlots.campusId, campusId));
 
+    return slots;
+  }
+
+  private async getCurrentSlots(campusId: number) {
+    const slots = await this.getSlots(campusId);
+    const nowIst = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+    );
+    const nowMinutes = nowIst.getHours() * 60 + nowIst.getMinutes();
+
+    return slots.find((slot, index) => {
+      const start = this.parseMinutes(String(slot.startTime));
+      const end = this.parseMinutes(String(slot.endTime));
+      if (nowMinutes >= start && nowMinutes < end) {
+        return slot;
+      }
+      return null;
+    });
+  }
+
+  private async resolveCurrentSlot(campusId: number) {
+    const slots = await this.getSlots(campusId);
     const nowIst = new Date(
       new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
     );
@@ -175,31 +197,45 @@ export class QrTokenService {
         ),
       );
 
+    let tokenData;
+
     if (existing && new Date(existing.expiresAt) > new Date()) {
-      return existing;
-    }
+      tokenData = existing;
+    } else {
+      const expiresAt = this.resolveExpiry(dateIso);
+      const token = randomUUID();
 
-    const expiresAt = this.resolveExpiry(dateIso);
-    const token = randomUUID();
-
-    const [created] = await this.db
-      .insert(schema.qrTokens)
-      .values({
-        campusId,
-        date: dateIso,
-        token,
-        expiresAt,
-      })
-      .onConflictDoUpdate({
-        target: [schema.qrTokens.campusId, schema.qrTokens.date],
-        set: {
+      const [created] = await this.db
+        .insert(schema.qrTokens)
+        .values({
+          campusId,
+          date: dateIso,
           token,
           expiresAt,
-        },
-      })
-      .returning();
+        })
+        .onConflictDoUpdate({
+          target: [schema.qrTokens.campusId, schema.qrTokens.date],
+          set: {
+            token,
+            expiresAt,
+          },
+        })
+        .returning();
+      tokenData = created;
+    }
 
-    return created;
+    const [campus] = await this.db
+      .select({ name: schema.campuses.name })
+      .from(schema.campuses)
+      .where(eq(schema.campuses.id, campusId));
+
+    const currentSlots = await this.getCurrentSlots(campusId);
+
+    return {
+      ...tokenData,
+      campus_name: campus?.name,
+      current_slots: currentSlots || null,
+    };
   }
 
   async scan(token: string, user: AuthenticatedUser) {
@@ -211,10 +247,10 @@ export class QrTokenService {
       has_selection: selection ? !!selection.ordered : false,
       menu_item: currentSlot.mealItemId
         ? {
-            id: currentSlot.mealItemId,
-            name: currentSlot.mealItemName,
-            description: currentSlot.mealItemDescription,
-          }
+          id: currentSlot.mealItemId,
+          name: currentSlot.mealItemName,
+          description: currentSlot.mealItemDescription,
+        }
         : null,
     };
   }
