@@ -14,6 +14,7 @@ import { QrTokenModule } from "./qr-token/qr-token.module";
 import { UsersModule } from "./users/users.module";
 import { CampusMealSlotsModule } from "./campus-meal-slots/campus-meal-slots.module";
 import { CampusesModule } from "./campuses/campuses.module";
+import { MealHistoryModule } from "./meal-history/meal-history.module";
 import { BulkUploadModule } from "./bulk-upload/bulk-upload.mudule";
 
 @Module({
@@ -26,6 +27,7 @@ import { BulkUploadModule } from "./bulk-upload/bulk-upload.mudule";
     CampusChangeRequestsModule,
     MenusModule,
     MealSelectionsModule,
+    MealHistoryModule,
     MealItemsModule,
     KitchenModule,
     QrTokenModule,
