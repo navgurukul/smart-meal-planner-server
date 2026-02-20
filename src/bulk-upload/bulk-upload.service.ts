@@ -25,7 +25,8 @@ export class BulkUploadService {
         users_data: any[],
     ) {
         try {
-            var b = 0,
+            var duplicateStudentCount = 0,
+                privilegedRoleLabels: string[] = [],
                 c = 0;
             let enrollments: any[] = [];
 
@@ -53,11 +54,41 @@ export class BulkUploadService {
                     .where(eq(users.email, users_data[i]['email']));
 
                 if (userInfo.length > 0) {
-                    b += 1;
-                    userReport.push({
-                        email: userInfo[0].email,
-                        message: `The student is already in the campus`,
-                    });
+                    // Fetch the user's existing role(s)
+                    const existingRoles = await this.db
+                        .select({ roleName: schema.roles.name })
+                        .from(schema.userRole)
+                        .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
+                        .where(eq(schema.userRole.userId, userInfo[0].id));
+
+                    const nonStudentRole = existingRoles.find(
+                        (r) => r.roleName !== 'STUDENT',
+                    );
+
+                    if (nonStudentRole) {
+                        // User has a privileged role — track label for fullMessage
+                        const roleLabel = nonStudentRole.roleName
+                            .replace('_', ' ')
+                            .toLowerCase()
+                            .replace(/\b\w/g, (ch) => ch.toUpperCase()); // e.g. "Super Admin"
+                        privilegedRoleLabels.push(roleLabel);
+                        userReport.push({
+                            email: userInfo[0].email,
+                            message: `The user you're trying to add is already a ${roleLabel}`,
+                        });
+                    } else {
+                        // Regular duplicate student — show which campus they belong to
+                        duplicateStudentCount += 1;
+                        const [existingCampus] = await this.db
+                            .select({ name: schema.campuses.name })
+                            .from(schema.campuses)
+                            .where(eq(schema.campuses.id, userInfo[0].campusId));
+                        const existingCampusName = existingCampus?.name ?? 'another campus';
+                        userReport.push({
+                            email: userInfo[0].email,
+                            message: `The student is already in the ${existingCampusName} campus`,
+                        });
+                    }
                 }
                 if (userInfo.length === 0) {
                     userInfo = await this.db.insert(users).values(newUser).returning();
@@ -92,8 +123,18 @@ export class BulkUploadService {
             if (c > 0) {
                 messageParts.push(`${c} ${c > 1 ? 'students are' : 'student is'} successfully added to the ${users_data[0]['campus_name']} campus`);
             }
-            if (b > 0) {
-                messageParts.push(`${b} ${b > 1 ? 'students are' : 'student is'} already in the ${users_data[0]['campus_name']} campus`);
+            if (duplicateStudentCount > 0) {
+                messageParts.push(`${duplicateStudentCount} ${duplicateStudentCount > 1 ? 'students are' : 'student is'} already assigned to a campus`);
+            }
+            if (privilegedRoleLabels.length > 0) {
+                // Group by role label and mention each unique role in the summary
+                const roleCounts = privilegedRoleLabels.reduce<Record<string, number>>((acc, label) => {
+                    acc[label] = (acc[label] ?? 0) + 1;
+                    return acc;
+                }, {});
+                for (const [label, count] of Object.entries(roleCounts)) {
+                    messageParts.push(`${count} ${count > 1 ? 'users are' : 'user is'} already a${label.startsWith('A') || label.startsWith('I') ? 'n' : ''} ${label}`);
+                }
             }
 
             let message = messageParts.join(' & ');
