@@ -22,7 +22,7 @@ export class UsersService {
   constructor(
     @Inject(DRIZZLE_DB)
     private readonly db: NodePgDatabase<typeof schema>,
-  ) { }
+  ) {}
 
   private isSuperAdmin(user: AuthenticatedUser) {
     return user.roles?.includes("SUPER_ADMIN");
@@ -54,16 +54,16 @@ export class UsersService {
     campusId: number | null,
     requester: AuthenticatedUser,
   ): Promise<{
-    users: Array<{
-      id: number;
-      name: string | null;
-      email: string;
-      status: string | null;
-      primaryCampusId: number | null;
-      roles: string[];
-    }>;
-    adminCount: number;
-    studentCount: number;
+      users: Array<{
+        id: number;
+        name: string | null;
+        email: string;
+        status: string | null;
+        primaryCampusId: number | null;
+        roles: string[];
+      }>;
+      adminCount: number; 
+      studentCount: number;
   }> {
     const superAdmin = this.isSuperAdmin(requester);
     const admin = this.isAdmin(requester);
@@ -107,9 +107,9 @@ export class UsersService {
       .where(
         resolvedCampusId
           ? or(
-            eq(schema.users.campusId, resolvedCampusId),
-            eq(schema.userCampuses.campusId, resolvedCampusId),
-          )
+              eq(schema.users.campusId, resolvedCampusId),
+              eq(schema.userCampuses.campusId, resolvedCampusId),
+            )
           : undefined,
       )
       .orderBy(sql`LOWER(${schema.users.name})`);
@@ -146,62 +146,62 @@ export class UsersService {
     }));
 
     const adminCount = users.filter(u =>
-      u.roles.includes("ADMIN")
-    ).length;
+        u.roles.includes("ADMIN")
+      ).length;
 
-    const studentCount = users.filter(u =>
-      u.roles.includes("STUDENT")
-    ).length;
+      const studentCount = users.filter(u =>
+        u.roles.includes("STUDENT")
+      ).length;
 
     return { users, adminCount, studentCount };
   }
 
-  async allAdmins(campusId: number | null,
-    role: string,
+   async allAdmins(campusId: number | null,
+    role: string ,
     requester: AuthenticatedUser,
-    searchTerm?: string | number): Promise<
-      Array<{
-        id: number;
-        name: string | null;
-        email: string;
-        campusId: number | null;
-        status: string | null;
-      }>
-    > {
+    searchTerm?: string | number ): Promise<
+    Array<{
+      id: number;
+      name: string | null;
+      email: string;
+      campusId: number | null;
+      status: string | null;
+    }>
+  > {
     const superAdmin = this.isSuperAdmin(requester);
     const admin = this.isAdmin(requester);
     if (!superAdmin && !admin) {
       throw new ForbiddenException("Not permitted");
     }
 
-    const queryBuild = campusId && searchTerm ?
-      and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId), ilike(schema.users.name, `${searchTerm}%`))
-      : campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId))
-        : searchTerm ? and(eq(schema.roles.name, role), ilike(schema.users.name, `${searchTerm}%`))
-          : eq(schema.roles.name, role);
+     const queryBuild = campusId && searchTerm ? 
+     and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId), ilike(schema.users.name, `${searchTerm}%`)) 
+     :campusId ? and(eq(schema.roles.name, role), eq(schema.users.campusId, campusId)) 
+     : searchTerm ? and(eq(schema.roles.name, role), ilike(schema.users.name, `${searchTerm}%`))
+    : eq(schema.roles.name, role);
 
     const users = await this.db
-      .select({
-        id: schema.users.id,
-        name: schema.users.name,
-        email: schema.users.email,
-        campusId: schema.users.campusId,
-        campusName: schema.campuses.name,
-        status: schema.users.status,
-        role: sql`ARRAY[${schema.roles.name}]`.as('role'),
-      })
-      .from(schema.users)
-      .leftJoin(schema.campuses, eq(schema.campuses.id, schema.users.campusId))
-      .innerJoin(
-        schema.userRole,
-        eq(schema.userRole.userId, schema.users.id),
-      )
-      .innerJoin(
-        schema.roles,
-        eq(schema.roles.id, schema.userRole.roleId),
-      )
-      .where(queryBuild)
-      .orderBy(sql`LOWER(${schema.users.name})`);
+    .select({
+      id: schema.users.id,
+      name: schema.users.name,
+      email: schema.users.email,
+      campusId: schema.users.campusId,
+      campusName: schema.campuses.name,
+      status: schema.users.status,
+      role:  sql`ARRAY[${schema.roles.name}]`.as('role'), 
+    })
+    .from(schema.users)
+    .leftJoin(schema.campuses, eq(schema.campuses.id, schema.users.campusId))
+    .innerJoin(
+      schema.userRole,
+      eq(schema.userRole.userId, schema.users.id),
+    )
+    .innerJoin(
+      schema.roles,
+      eq(schema.roles.id, schema.userRole.roleId),
+    )
+    .where(queryBuild)
+    .orderBy(sql`LOWER(${schema.users.name})`);
 
     return users;
   }
@@ -242,40 +242,11 @@ export class UsersService {
     }
 
     const [existing] = await this.db
-      .select({ id: schema.users.id, campusId: schema.users.campusId })
+      .select({ id: schema.users.id })
       .from(schema.users)
       .where(eq(schema.users.email, dto.email));
     if (existing) {
-      // Fetch the existing user's role(s) and campus name for a contextual error
-      const existingRoles = await this.db
-        .select({ roleName: schema.roles.name })
-        .from(schema.userRole)
-        .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
-        .where(eq(schema.userRole.userId, existing.id));
-
-      const [existingCampus] = await this.db
-        .select({ name: schema.campuses.name })
-        .from(schema.campuses)
-        .where(eq(schema.campuses.id, existing.campusId));
-
-      const existingRoleNames = existingRoles.map((r) => r.roleName);
-      const campusName = existingCampus?.name ?? 'a campus';
-
-      // Format the role being attempted (e.g. "ADMIN" → "Admin")
-      const attemptedRoleLabel = dto.role
-        ? dto.role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
-        : 'this role';
-
-      // Format each existing role as a readable label
-      const existingRoleLabel = existingRoleNames.length
-        ? existingRoleNames
-          .map((r) => r.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()))
-          .join(' / ')
-        : 'another role';
-
-      throw new BadRequestException(
-        `The user you're trying to add as ${attemptedRoleLabel.match(/^[AEIOU]/i) ? 'an' : 'a'} ${attemptedRoleLabel} is already assigned to ${campusName} campus as ${existingRoleLabel.match(/^[AEIOU]/i) ? 'an' : 'a'} ${existingRoleLabel}`,
-      );
+      throw new BadRequestException("User with this email already exists");
     }
 
     const [user] = await this.db
@@ -313,7 +284,7 @@ export class UsersService {
       roleId: roleId,
     });
 
-    return { ...user, role: dto.role };
+    return {...user, role: dto.role};
   }
 
   async updateUser(
@@ -417,12 +388,12 @@ export class UsersService {
       }
 
       await this.db
-        .delete(schema.userRole)
-        .where(eq(schema.userRole.userId, userId));
+      .delete(schema.userRole)
+      .where(eq(schema.userRole.userId, userId));
 
       await this.db
-        .delete(schema.userCampuses)
-        .where(eq(schema.userCampuses.userId, userId));
+      .delete(schema.userCampuses)
+      .where(eq(schema.userCampuses.userId, userId));
 
       await this.db.delete(schema.users).where(eq(schema.users.id, userId));
       return { status: 'success', message: 'User deleted successfully', code: 200 };
@@ -484,7 +455,7 @@ export class UsersService {
     const targetCampus =
       targetUser.primaryCampusId ?? targetUser.campusId ?? null;
     console.log('Target user campus:', targetCampus);
-    console.log('Requester campus IDs:', requester.campusIds);
+    console.log('Requester campus IDs:', requester.campusIds);  
     if (!superAdmin) {
       if (!targetCampus || !requester.campusIds?.includes(targetCampus)) {
         throw new ForbiddenException("Campus access denied");
