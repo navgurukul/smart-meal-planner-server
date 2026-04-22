@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -15,7 +17,7 @@ import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { requireRole } from "src/auth/guards/require-role.guard";
 import type { RequestWithUser } from "src/middleware/auth.middleware";
 import { BulkUploadService } from './bulk-upload.service';
-import { studentDataDto } from "./dto/bulk-upload.dto";
+import { studentDataDto, updateStudentByIdDto } from "./dto/bulk-upload.dto";
 
 @ApiTags("Bulk Upload")
 @ApiBearerAuth("JWT-auth")
@@ -38,5 +40,39 @@ export class BulkUploadController {
         throw new BadRequestException(err);
         }
         return res;
+    }
+
+    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+    @Put("/students/:studentId")
+    @ApiOperation({ summary: "Update student data by id" })
+    async updateStudentById(
+      @Param("studentId", ParseIntPipe) studentId: number,
+      @Body() studentData: updateStudentByIdDto,
+    ) {
+      const [err, res] = await this.bulkUploadService.updateStudentById(
+        studentId,
+        studentData,
+      );
+      if (err) {
+        throw new BadRequestException(err);
+      }
+      return res;
+    }
+
+    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+    @Delete("/students/:studentId")
+    @ApiOperation({ summary: "Delete student by id" })
+    async deleteStudentById(
+      @Param("studentId", ParseIntPipe) studentId: number,
+      @Req() req: RequestWithUser,
+    ) {
+      const [err, res] = await this.bulkUploadService.deleteStudentById(
+        studentId,
+        req.user!,
+      );
+      if (err) {
+        throw new BadRequestException(err);
+      }
+      return res;
     }
 }

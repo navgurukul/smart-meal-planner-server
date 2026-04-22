@@ -3,15 +3,15 @@ import { Inject } from "@nestjs/common/decorators";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant";
 import * as schema from "src/schema/schema";
-import { User } from 'src/users/entities/user.entity';
-import { studentDataDto } from "./dto/bulk-upload.dto";
+import { updateStudentByIdDto } from "./dto/bulk-upload.dto";
 import { users } from 'src/schema/schema';
 import {
     eq,
-    sql,
+    ilike,
 } from 'drizzle-orm';
-import { error, log } from 'console';
+import { log } from 'console';
 import { UsersService } from "src/users/users.service";
+import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 
 @Injectable()
 export class BulkUploadService {
@@ -36,7 +36,7 @@ export class BulkUploadService {
                 const [campus] = await this.db
                     .select({ id: schema.campuses.id, name: schema.campuses.name })
                     .from(schema.campuses)
-                    .where(eq(schema.campuses.name, users_data[i]['campus_name']));
+                    .where(ilike(schema.campuses.name, (users_data[i]['campus_name'] ?? '').trim()));
                 if (!campus) {
                     throw new BadRequestException("Campus not found");
                 }
@@ -149,7 +149,124 @@ export class BulkUploadService {
                     students_enrolled: userReport
                 },
             ];
-        } catch (e) {
+        } catch (e: any) {
+            log(`error: ${e.message}`);
+            return [{ status: 'error', message: e.message, code: 500 }, null];
+        }
+    }
+
+    async updateStudentById(studentId: number, studentData: updateStudentByIdDto) {
+        try {
+            const studentName = studentData.name?.trim();
+            const campusName = studentData.campus_name?.trim();
+            const campusId = studentData.campus_id;
+
+            const [existingUser] = await this.db
+                .select({
+                    id: schema.users.id,
+                    email: schema.users.email,
+                })
+                .from(schema.users)
+                .where(eq(schema.users.id, studentId));
+
+            if (!existingUser) {
+                throw new BadRequestException('Student not found');
+            }
+
+            const existingRoles = await this.db
+                .select({ roleName: schema.roles.name })
+                .from(schema.userRole)
+                .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
+                .where(eq(schema.userRole.userId, existingUser.id));
+
+            const nonStudentRole = existingRoles.find(
+                (role) => role.roleName !== 'STUDENT',
+            );
+
+            if (nonStudentRole) {
+                const roleLabel = nonStudentRole.roleName
+                    .replace(/_/g, ' ')
+                    .toLowerCase()
+                    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+                throw new BadRequestException(
+                    `Cannot update because user is already a ${roleLabel}`,
+                );
+            }
+
+            if (!campusId && !campusName) {
+                throw new BadRequestException('Either campus_id or campus_name is required');
+            }
+
+            let campus;
+            if (campusId) {
+                [campus] = await this.db
+                    .select({ id: schema.campuses.id, name: schema.campuses.name })
+                    .from(schema.campuses)
+                    .where(eq(schema.campuses.id, campusId));
+            } else {
+                [campus] = await this.db
+                    .select({ id: schema.campuses.id, name: schema.campuses.name })
+                    .from(schema.campuses)
+                    .where(ilike(schema.campuses.name, campusName!));
+            }
+
+            if (!campus) {
+                throw new BadRequestException('Campus not found');
+            }
+
+            await this.db
+                .update(schema.users)
+                .set({
+                    name: studentName,
+                    campusId: campus.id,
+                    updatedAt: new Date(),
+                })
+                .where(eq(schema.users.id, existingUser.id));
+
+            await this.db
+                .update(schema.userCampuses)
+                .set({ isPrimary: false })
+                .where(eq(schema.userCampuses.userId, existingUser.id));
+
+            await this.db
+                .insert(schema.userCampuses)
+                .values({
+                    userId: existingUser.id,
+                    campusId: campus.id,
+                    isPrimary: true,
+                })
+                .onConflictDoUpdate({
+                    target: [schema.userCampuses.userId, schema.userCampuses.campusId],
+                    set: { isPrimary: true },
+                });
+
+            return [
+                null,
+                {
+                    status: 'success',
+                    code: 200,
+                    message: 'Student updated successfully',
+                    student_updated: {
+                        id: existingUser.id,
+                        email: existingUser.email,
+                        name: studentName,
+                        campus_id: campus.id,
+                        campus_name: campus.name,
+                    },
+                },
+            ];
+        } catch (e: any) {
+            log(`error: ${e.message}`);
+            return [{ status: 'error', message: e.message, code: 500 }, null];
+        }
+    }
+
+    async deleteStudentById(studentId: number, requester: AuthenticatedUser) {
+        try {
+            const result = await this.usersService.deleteUser(studentId, requester);
+            return [null, result];
+        } catch (e: any) {
             log(`error: ${e.message}`);
             return [{ status: 'error', message: e.message, code: 500 }, null];
         }

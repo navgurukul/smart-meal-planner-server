@@ -3,8 +3,11 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
+  ValidateIf,
   ValidateNested,
   IsNumber,
+  IsInt,
+  Min,
   IsEmail,
   IsBoolean,
   IsIn,
@@ -19,7 +22,7 @@ class studentData {
   })
   @IsNotEmpty()
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({
     type: String,
@@ -28,7 +31,7 @@ class studentData {
   })
   @IsNotEmpty()
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiProperty({
     type: String,
@@ -37,8 +40,39 @@ class studentData {
   })
   @IsNotEmpty()
   @IsString()
-  campus_name: string;
+  campus_name!: string;
 }
+
+export class updateStudentByIdDto {
+  @ApiProperty({
+    type: String,
+    example: 'example',
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsString()
+  name!: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'campusA',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  campus_name?: string;
+
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  campus_id?: number;
+}
+
 export class studentDataDto {
   @ApiProperty({
     type: [studentData],
@@ -47,5 +81,5 @@ export class studentDataDto {
   @IsNotEmpty()
   @ValidateNested({ each: true })
   @Type(() => studentData)
-  students: studentData[];
+  students!: studentData[];
 }
