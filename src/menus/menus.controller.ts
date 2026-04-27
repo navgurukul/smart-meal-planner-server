@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -39,6 +40,16 @@ export class MenusController {
     @Req() req: RequestWithUser,
   ) {
     return this.menusService.updateById(menuId, body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiParam({ name: "menuId", type: Number, example: 1 })
+  @Delete(":menuId")
+  deleteById(
+    @Param("menuId", ParseIntPipe) menuId: number,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.menusService.deleteById(menuId, req.user!);
   }
 
   @UseGuards(JwtAuthGuard)

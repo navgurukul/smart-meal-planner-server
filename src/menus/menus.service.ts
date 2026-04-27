@@ -158,7 +158,6 @@ export class MenusService {
 
     return { daily_menu_id: dailyMenu.id };
   }
-
   async updateById(
     menuId: number,
     dto: UpdateMenuDto,
@@ -227,6 +226,29 @@ export class MenusService {
     }
 
     return { daily_menu_id: menu.id };
+  }
+
+  async deleteById(menuId: number, user: AuthenticatedUser) {
+    const [menu] = await this.db
+      .select({ id: schema.dailyMenus.id, campusId: schema.dailyMenus.campusId })
+      .from(schema.dailyMenus)
+      .where(eq(schema.dailyMenus.id, menuId));
+
+    if (!menu) {
+      throw new NotFoundException("Menu not found");
+    }
+
+    this.ensureMenuWriteAccess(menu.campusId, user);
+
+    await this.db
+      .delete(schema.dailyMenuItems)
+      .where(eq(schema.dailyMenuItems.dailyMenuId, menu.id));
+
+    await this.db
+      .delete(schema.dailyMenus)
+      .where(eq(schema.dailyMenus.id, menu.id));
+
+    return { status: "success", message: "Menu deleted successfully" };
   }
 
   async getMenus(
