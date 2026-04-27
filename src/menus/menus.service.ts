@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
 import { and, eq, inArray, gte, lte } from "drizzle-orm";
@@ -9,7 +10,7 @@ import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
 import * as schema from "src/schema/schema";
-import { UpsertMenuDto } from "./dto/upsert-menu.dto";
+import { UpdateMenuDto, UpsertMenuDto } from "./dto/upsert-menu.dto";
 
 @Injectable()
 export class MenusService {
@@ -156,6 +157,76 @@ export class MenusService {
     }
 
     return { daily_menu_id: dailyMenu.id };
+  }
+
+  async updateById(
+    menuId: number,
+    dto: UpdateMenuDto,
+    user: AuthenticatedUser,
+  ) {
+    const [menu] = await this.db
+      .select({ id: schema.dailyMenus.id, campusId: schema.dailyMenus.campusId })
+      .from(schema.dailyMenus)
+      .where(eq(schema.dailyMenus.id, menuId));
+
+    if (!menu) {
+      throw new NotFoundException("Menu not found");
+    }
+
+    this.ensureMenuWriteAccess(menu.campusId, user);
+
+    const validSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
+    const slotsProvided = dto.items.map((i) => i.slot);
+    const invalid = slotsProvided.filter((s) => !validSlots.includes(s));
+    if (invalid.length) {
+      throw new BadRequestException(`Invalid slots: ${invalid.join(", ")}`);
+    }
+
+    const mealItemIds = dto.items.map((i) => i.meal_item_id);
+    const mealItems = await this.db
+      .select({ id: schema.mealItems.id, isActive: schema.mealItems.isActive })
+      .from(schema.mealItems)
+      .where(inArray(schema.mealItems.id, mealItemIds));
+
+    const missingIds = mealItemIds.filter(
+      (id) => !mealItems.find((mi) => mi.id === id),
+    );
+    if (missingIds.length) {
+      throw new BadRequestException(`Meal items not found: ${missingIds.join(", ")}`);
+    }
+    const inactive = mealItems.filter((mi) => !mi.isActive).map((mi) => mi.id);
+    if (inactive.length) {
+      throw new BadRequestException(`Meal items inactive: ${inactive.join(", ")}`);
+    }
+
+    const slotRows = await this.db
+      .select({ id: schema.mealSlots.id, name: schema.mealSlots.name })
+      .from(schema.mealSlots)
+      .where(inArray(schema.mealSlots.name, slotsProvided as any));
+    const slotMap = new Map(slotRows.map((s) => [s.name, s.id]));
+    const missingSlots = slotsProvided.filter((s) => !slotMap.has(s));
+    if (missingSlots.length) {
+      throw new BadRequestException(
+        `Meal slots not seeded: ${missingSlots.join(", ")}`,
+      );
+    }
+
+    for (const item of dto.items) {
+      const slotId = slotMap.get(item.slot)!;
+      await this.db
+        .insert(schema.dailyMenuItems)
+        .values({
+          dailyMenuId: menu.id,
+          mealSlotId: slotId,
+          mealItemId: item.meal_item_id,
+        })
+        .onConflictDoUpdate({
+          target: [schema.dailyMenuItems.dailyMenuId, schema.dailyMenuItems.mealSlotId],
+          set: { mealItemId: item.meal_item_id },
+        });
+    }
+
+    return { daily_menu_id: menu.id };
   }
 
   async getMenus(

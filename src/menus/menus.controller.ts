@@ -2,17 +2,20 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { requireRole } from "src/auth/guards/require-role.guard";
-import { ApiBearerAuth, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiBody, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import type { RequestWithUser } from "src/middleware/auth.middleware";
 import { MenusService } from "./menus.service";
-import { UpsertMenuDto } from "./dto/upsert-menu.dto";
+import { UpdateMenuDto, UpsertMenuDto } from "./dto/upsert-menu.dto";
 
 @ApiTags("Menus")
 @ApiBearerAuth("JWT-auth")
@@ -24,6 +27,18 @@ export class MenusController {
   @Post()
   upsert(@Body() body: UpsertMenuDto, @Req() req: RequestWithUser) {
     return this.menusService.upsert(body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiParam({ name: "menuId", type: Number, example: 1 })
+  @ApiBody({ type: UpdateMenuDto })
+  @Put(":menuId")
+  updateById(
+    @Param("menuId", ParseIntPipe) menuId: number,
+    @Body() body: UpdateMenuDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.menusService.updateById(menuId, body, req.user!);
   }
 
   @UseGuards(JwtAuthGuard)
