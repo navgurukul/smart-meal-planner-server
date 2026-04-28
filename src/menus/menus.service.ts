@@ -74,6 +74,10 @@ export class MenusService {
 
     for (const date of Object.keys(result).sort()) {
       sortedResult[date] = {};
+      // Preserve menu_id if it exists
+      if (result[date].menu_id) {
+        sortedResult[date].menu_id = result[date].menu_id;
+      }
       for (const slot of slotOrder) {
         if (result[date][slot]) {
           sortedResult[date][slot] = result[date][slot];
@@ -280,6 +284,7 @@ export class MenusService {
         itemDescription: schema.mealItems.description,
         slotStart: schema.campusMealSlots.startTime,
         slotEnd: schema.campusMealSlots.endTime,
+        dailyMenuId: schema.dailyMenus.id,
       })
       .from(schema.dailyMenuItems)
       .innerJoin(
@@ -312,13 +317,13 @@ export class MenusService {
 
     const result: Record<
       string,
-      { [slot: string]: { meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string } }
+      Record<string, { meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string }> & { menu_id?: number }
     > = {};
 
     for (const row of menus) {
       const dateKey = row.date.toString().slice(0, 10);
       if (!result[dateKey]) {
-        result[dateKey] = {};
+        result[dateKey] = { menu_id: row.dailyMenuId } as any;
       }
       result[dateKey][row.slotName] = {
         meal_item_id: row.itemId,
@@ -352,6 +357,7 @@ export class MenusService {
 
     const menuRows = await this.db
       .select({
+        menuId: schema.dailyMenus.id,
         date: schema.dailyMenus.date,
         slotName: schema.mealSlots.name,
         slotStart: schema.campusMealSlots.startTime,
@@ -458,20 +464,18 @@ export class MenusService {
     const now = new Date();
     const result: Record<
       string,
-      {
-        [slot: string]: {
-          meal_item_id: number;
-          name: string;
-          description: string | null;
-          start_time: string;
-          end_time: string;
-          selected: boolean;
-          ordered: boolean;
-          received: boolean;
-          status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
-          deadline: string;
-        };
-      }
+      Record<string, {
+        meal_item_id: number;
+        name: string;
+        description: string | null;
+        start_time: string;
+        end_time: string;
+        selected: boolean;
+        ordered: boolean;
+        received: boolean;
+        status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
+        deadline: string;
+      }> & { menu_id?: number }
     > = {};
 
     for (const row of menuRows) {
@@ -494,7 +498,7 @@ export class MenusService {
             ? "CLOSED"
             : "NOT_SELECTED";
 
-      if (!result[dateKey]) result[dateKey] = {};
+      if (!result[dateKey]) result[dateKey] = { menu_id: row.menuId } as any;
       result[dateKey][row.slotName] = {
         meal_item_id: row.mealItemId,
         name: row.mealItemName,
