@@ -6,8 +6,10 @@ import * as schema from "src/schema/schema";
 import { updateStudentByIdDto } from "./dto/bulk-upload.dto";
 import { users } from 'src/schema/schema';
 import {
+    and,
     eq,
     ilike,
+    ne,
 } from 'drizzle-orm';
 import { log } from 'console';
 import { UsersService } from "src/users/users.service";
@@ -160,7 +162,7 @@ export class BulkUploadService {
             const studentName = studentData.name?.trim();
             const campusName = studentData.campus_name?.trim();
             const campusId = studentData.campus_id;
-
+            const email = studentData.email?.trim().toLowerCase();
             const [existingUser] = await this.db
                 .select({
                     id: schema.users.id,
@@ -171,6 +173,22 @@ export class BulkUploadService {
 
             if (!existingUser) {
                 throw new BadRequestException('Student not found');
+            }
+
+            if (email) {
+                const [userWithSameEmail] = await this.db
+                    .select({ id: schema.users.id })
+                    .from(schema.users)
+                    .where(
+                        and(
+                            ilike(schema.users.email, email),
+                            ne(schema.users.id, existingUser.id),
+                        ),
+                    );
+
+                if (userWithSameEmail) {
+                    throw new BadRequestException('Email is already in use');
+                }
             }
 
             const existingRoles = await this.db
@@ -219,6 +237,7 @@ export class BulkUploadService {
                 .update(schema.users)
                 .set({
                     name: studentName,
+                    email: email,
                     campusId: campus.id,
                     updatedAt: new Date(),
                 })
@@ -249,7 +268,7 @@ export class BulkUploadService {
                     message: 'Student updated successfully',
                     student_updated: {
                         id: existingUser.id,
-                        email: existingUser.email,
+                        email: email ?? existingUser.email,
                         name: studentName,
                         campus_id: campus.id,
                         campus_name: campus.name,

@@ -46,6 +46,15 @@ class studentData {
 export class updateStudentByIdDto {
   @ApiProperty({
     type: String,
+    example: 'example@gmail.com',
+    required: false,
+  })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({
+    type: String,
     example: 'example',
     required: true,
   })
