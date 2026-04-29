@@ -15,7 +15,6 @@ import { SetUserCampusDto } from "./dto/set-user-campus.dto";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { SelfUpdateDto } from "./dto/self-update.dto";
-import { log } from "util";
 
 @Injectable()
 export class UsersService {
@@ -328,12 +327,26 @@ export class UsersService {
     const [existingUser] = await this.db
       .select({
         id: schema.users.id,
+        email: schema.users.email,
         campusId: schema.users.campusId,
       })
       .from(schema.users)
       .where(eq(schema.users.id, userId));
     if (!existingUser) {
       throw new NotFoundException("User not found");
+    }
+
+    const normalizedName = dto.name?.trim();
+    const normalizedEmail = dto.email?.trim().toLowerCase();
+    if (normalizedEmail && normalizedEmail !== existingUser.email) {
+      const [duplicateEmail] = await this.db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.email, normalizedEmail));
+
+      if (duplicateEmail) {
+        throw new BadRequestException("User with this email already exists");
+      }
     }
 
     let campusIdToSet = dto.campus_id ?? existingUser.campusId;
@@ -359,7 +372,8 @@ export class UsersService {
     const [updated] = await this.db
       .update(schema.users)
       .set({
-        name: dto.name ?? undefined,
+        name: normalizedName ?? undefined,
+        email: normalizedEmail ?? undefined,
         campusId: dto.campus_id ?? undefined,
         address: dto.address ?? undefined,
         googleId: dto.google_id ?? undefined,
@@ -426,8 +440,8 @@ export class UsersService {
 
       await this.db.delete(schema.users).where(eq(schema.users.id, userId));
       return { status: 'success', message: 'User deleted successfully', code: 200 };
-    } catch (e) {
-      log(`error: ${e.message}`);
+    } catch (e: any) {
+      console.error(`error: ${e?.message ?? e}`);
       return { status: 'error', message: e.message, code: 500 };
     }
   }

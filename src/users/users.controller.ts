@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Delete,
   Query,
   Req,
@@ -120,6 +121,18 @@ export class UsersController {
   @ApiOperation({ summary: "Update user details (admin/super-admin)" })
   @Post(":userId")
   updateUser(
+    @Param("userId", ParseIntPipe) userId: number,
+    @Body() body: UpdateUserDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usersService.updateUser(userId, body, req.user!);
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @ApiBody({ type: UpdateUserDto })
+  @ApiOperation({ summary: "Update user details (admin/super-admin)" })
+  @Put(":userId")
+  updateUserViaPut(
     @Param("userId", ParseIntPipe) userId: number,
     @Body() body: UpdateUserDto,
     @Req() req: RequestWithUser,
