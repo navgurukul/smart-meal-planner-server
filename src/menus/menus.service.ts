@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
-import { and, eq, inArray, gte, lte } from "drizzle-orm";
+import { and, eq, inArray, gte, lte, ne } from "drizzle-orm";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant"
 import type { AuthenticatedUser } from "src/middleware/auth.middleware";
@@ -74,10 +74,6 @@ export class MenusService {
 
     for (const date of Object.keys(result).sort()) {
       sortedResult[date] = {};
-      // Preserve menu_id if it exists
-      if (result[date].menu_id) {
-        sortedResult[date].menu_id = result[date].menu_id;
-      }
       for (const slot of slotOrder) {
         if (result[date][slot]) {
           sortedResult[date][slot] = result[date][slot];
@@ -168,91 +164,122 @@ export class MenusService {
     user: AuthenticatedUser,
   ) {
     const [menu] = await this.db
-      .select({ id: schema.dailyMenus.id, campusId: schema.dailyMenus.campusId })
-      .from(schema.dailyMenus)
-      .where(eq(schema.dailyMenus.id, menuId));
+      .select({
+        id: schema.dailyMenuItems.id,
+        dailyMenuId: schema.dailyMenuItems.dailyMenuId,
+        mealSlotId: schema.dailyMenuItems.mealSlotId,
+        campusId: schema.dailyMenus.campusId,
+      })
+      .from(schema.dailyMenuItems)
+      .innerJoin(
+        schema.dailyMenus,
+        eq(schema.dailyMenuItems.dailyMenuId, schema.dailyMenus.id),
+      )
+      .where(eq(schema.dailyMenuItems.id, menuId));
 
     if (!menu) {
-      throw new NotFoundException("Menu not found");
+      throw new NotFoundException("Menu item not found");
     }
 
     this.ensureMenuWriteAccess(menu.campusId, user);
 
-    const validSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
-    const slotsProvided = dto.items.map((i) => i.slot);
-    const invalid = slotsProvided.filter((s) => !validSlots.includes(s));
-    if (invalid.length) {
-      throw new BadRequestException(`Invalid slots: ${invalid.join(", ")}`);
+    if (dto.meal_item_id === undefined && dto.slot === undefined) {
+      throw new BadRequestException("At least one field is required to update");
     }
 
-    const mealItemIds = dto.items.map((i) => i.meal_item_id);
-    const mealItems = await this.db
-      .select({ id: schema.mealItems.id, isActive: schema.mealItems.isActive })
-      .from(schema.mealItems)
-      .where(inArray(schema.mealItems.id, mealItemIds));
+    const updates: Partial<typeof schema.dailyMenuItems.$inferInsert> = {};
 
-    const missingIds = mealItemIds.filter(
-      (id) => !mealItems.find((mi) => mi.id === id),
-    );
-    if (missingIds.length) {
-      throw new BadRequestException(`Meal items not found: ${missingIds.join(", ")}`);
-    }
-    const inactive = mealItems.filter((mi) => !mi.isActive).map((mi) => mi.id);
-    if (inactive.length) {
-      throw new BadRequestException(`Meal items inactive: ${inactive.join(", ")}`);
-    }
+    if (dto.meal_item_id !== undefined) {
+      const [mealItem] = await this.db
+        .select({ id: schema.mealItems.id, isActive: schema.mealItems.isActive })
+        .from(schema.mealItems)
+        .where(eq(schema.mealItems.id, dto.meal_item_id));
 
-    const slotRows = await this.db
-      .select({ id: schema.mealSlots.id, name: schema.mealSlots.name })
-      .from(schema.mealSlots)
-      .where(inArray(schema.mealSlots.name, slotsProvided as any));
-    const slotMap = new Map(slotRows.map((s) => [s.name, s.id]));
-    const missingSlots = slotsProvided.filter((s) => !slotMap.has(s));
-    if (missingSlots.length) {
-      throw new BadRequestException(
-        `Meal slots not seeded: ${missingSlots.join(", ")}`,
-      );
+      if (!mealItem) {
+        throw new BadRequestException(`Meal items not found: ${dto.meal_item_id}`);
+      }
+      if (!mealItem.isActive) {
+        throw new BadRequestException(`Meal items inactive: ${dto.meal_item_id}`);
+      }
+
+      updates.mealItemId = dto.meal_item_id;
     }
 
-    for (const item of dto.items) {
-      const slotId = slotMap.get(item.slot)!;
-      await this.db
-        .insert(schema.dailyMenuItems)
-        .values({
-          dailyMenuId: menu.id,
-          mealSlotId: slotId,
-          mealItemId: item.meal_item_id,
-        })
-        .onConflictDoUpdate({
-          target: [schema.dailyMenuItems.dailyMenuId, schema.dailyMenuItems.mealSlotId],
-          set: { mealItemId: item.meal_item_id },
-        });
+    if (dto.slot !== undefined) {
+      const [slotRow] = await this.db
+        .select({ id: schema.mealSlots.id, name: schema.mealSlots.name })
+        .from(schema.mealSlots)
+        .where(eq(schema.mealSlots.name, dto.slot));
+
+      if (!slotRow) {
+        throw new BadRequestException(`Meal slots not seeded: ${dto.slot}`);
+      }
+
+      const [duplicate] = await this.db
+        .select({ id: schema.dailyMenuItems.id })
+        .from(schema.dailyMenuItems)
+        .where(
+          and(
+            eq(schema.dailyMenuItems.dailyMenuId, menu.dailyMenuId),
+            eq(schema.dailyMenuItems.mealSlotId, slotRow.id),
+            ne(schema.dailyMenuItems.id, menu.id),
+          ),
+        );
+
+      if (duplicate) {
+        throw new BadRequestException(
+          "A meal already exists for this date and meal type",
+        );
+      }
+
+      updates.mealSlotId = slotRow.id;
     }
 
-    return { daily_menu_id: menu.id };
+    const [updated] = await this.db
+      .update(schema.dailyMenuItems)
+      .set(updates)
+      .where(eq(schema.dailyMenuItems.id, menu.id))
+      .returning({
+        id: schema.dailyMenuItems.id,
+        dailyMenuId: schema.dailyMenuItems.dailyMenuId,
+      });
+
+    if (!updated) {
+      throw new NotFoundException("Menu item not found");
+    }
+
+    return { menu_id: updated.id, daily_menu_id: updated.dailyMenuId };
   }
 
-  async deleteById(menuId: number, user: AuthenticatedUser) {
-    const [menu] = await this.db
-      .select({ id: schema.dailyMenus.id, campusId: schema.dailyMenus.campusId })
-      .from(schema.dailyMenus)
-      .where(eq(schema.dailyMenus.id, menuId));
+  async deleteById(dailyMenuItemId: number, user: AuthenticatedUser) {
+    const [menuItem] = await this.db
+      .select({
+        id: schema.dailyMenuItems.id,
+        dailyMenuId: schema.dailyMenuItems.dailyMenuId,
+      })
+      .from(schema.dailyMenuItems)
+      .where(eq(schema.dailyMenuItems.id, dailyMenuItemId));
 
-    if (!menu) {
-      throw new NotFoundException("Menu not found");
+    if (!menuItem) {
+      throw new NotFoundException("Menu item not found");
     }
 
-    this.ensureMenuWriteAccess(menu.campusId, user);
+    const [dailyMenu] = await this.db
+      .select({ id: schema.dailyMenus.id, campusId: schema.dailyMenus.campusId })
+      .from(schema.dailyMenus)
+      .where(eq(schema.dailyMenus.id, menuItem.dailyMenuId));
+
+    if (!dailyMenu) {
+      throw new NotFoundException("Daily menu not found");
+    }
+
+    this.ensureMenuWriteAccess(dailyMenu.campusId, user);
 
     await this.db
       .delete(schema.dailyMenuItems)
-      .where(eq(schema.dailyMenuItems.dailyMenuId, menu.id));
+      .where(eq(schema.dailyMenuItems.id, dailyMenuItemId));
 
-    await this.db
-      .delete(schema.dailyMenus)
-      .where(eq(schema.dailyMenus.id, menu.id));
-
-    return { status: "success", message: "Menu deleted successfully" };
+    return { status: "success", message: "Menu item deleted successfully" };
   }
 
   async getMenus(
@@ -275,7 +302,7 @@ export class MenusService {
 
     const menus = await this.db
       .select({
-        menuId: schema.dailyMenus.id,
+        dailyMenuItemId: schema.dailyMenuItems.id,
         date: schema.dailyMenus.date,
         slotId: schema.mealSlots.id,
         slotName: schema.mealSlots.name,
@@ -284,7 +311,6 @@ export class MenusService {
         itemDescription: schema.mealItems.description,
         slotStart: schema.campusMealSlots.startTime,
         slotEnd: schema.campusMealSlots.endTime,
-        dailyMenuId: schema.dailyMenus.id,
       })
       .from(schema.dailyMenuItems)
       .innerJoin(
@@ -317,15 +343,16 @@ export class MenusService {
 
     const result: Record<
       string,
-      Record<string, { meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string }> & { menu_id?: number }
+      Record<string, { menu_id: number; meal_item_id: number; name: string; description: string | null; start_time: string; end_time: string }>
     > = {};
 
     for (const row of menus) {
       const dateKey = row.date.toString().slice(0, 10);
       if (!result[dateKey]) {
-        result[dateKey] = { menu_id: row.dailyMenuId } as any;
+        result[dateKey] = {} as any;
       }
       result[dateKey][row.slotName] = {
+        menu_id: row.dailyMenuItemId,
         meal_item_id: row.itemId,
         name: row.itemName,
         description: row.itemDescription,
@@ -357,7 +384,7 @@ export class MenusService {
 
     const menuRows = await this.db
       .select({
-        menuId: schema.dailyMenus.id,
+        dailyMenuItemId: schema.dailyMenuItems.id,
         date: schema.dailyMenus.date,
         slotName: schema.mealSlots.name,
         slotStart: schema.campusMealSlots.startTime,
@@ -465,6 +492,7 @@ export class MenusService {
     const result: Record<
       string,
       Record<string, {
+        menu_id: number;
         meal_item_id: number;
         name: string;
         description: string | null;
@@ -475,7 +503,7 @@ export class MenusService {
         received: boolean;
         status: "SELECTED" | "NOT_INTERESTED" | "NOT_SELECTED" | "CLOSED";
         deadline: string;
-      }> & { menu_id?: number }
+      }>
     > = {};
 
     for (const row of menuRows) {
@@ -498,8 +526,9 @@ export class MenusService {
             ? "CLOSED"
             : "NOT_SELECTED";
 
-      if (!result[dateKey]) result[dateKey] = { menu_id: row.menuId } as any;
+      if (!result[dateKey]) result[dateKey] = {} as any;
       result[dateKey][row.slotName] = {
+        menu_id: row.dailyMenuItemId,
         meal_item_id: row.mealItemId,
         name: row.mealItemName,
         description: row.mealItemDescription,

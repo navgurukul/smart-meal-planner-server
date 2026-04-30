@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsOptional,
   IsPositive,
   ValidateNested,
 } from "class-validator";
@@ -43,10 +44,14 @@ export class UpsertMenuDto {
 }
 
 export class UpdateMenuDto {
-  @ApiProperty({ type: [MenuItemInput] })
-  @IsArray()
-  @ArrayNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => MenuItemInput)
-  items!: MenuItemInput[];
+  @ApiProperty({ enum: mealSlots, required: false, example: "BREAKFAST" })
+  @IsOptional()
+  @IsEnum(mealSlots)
+  slot?: MealSlotName;
+
+  @ApiProperty({ required: false, example: 3 })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  meal_item_id?: number;
 }
