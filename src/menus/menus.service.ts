@@ -19,6 +19,15 @@ export class MenusService {
     private readonly db: NodePgDatabase<typeof schema>,
   ) { }
 
+  private getIstDateKey(date: Date | string = new Date()) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(typeof date === "string" ? new Date(date) : date);
+  }
+
   private isSuperAdmin(user: AuthenticatedUser) {
     return user.roles?.includes("SUPER_ADMIN");
   }
@@ -111,9 +120,70 @@ export class MenusService {
     }
 
     const dateIso = dto.date;
-    const dateOnly = new Date(dateIso);
+    const dateOnly = new Date(`${dateIso}T00:00:00+05:30`);
     if (Number.isNaN(dateOnly.getTime())) {
       throw new BadRequestException("Invalid date");
+    }
+
+    const todayIst = this.getIstDateKey();
+    if (dateIso < todayIst) {
+      throw new BadRequestException("Cannot create menu for a past date");
+    }
+
+    // Fetch slot ids first so we can validate deadline and campus slot setup.
+    const slotRows = await this.db
+      .select({ id: schema.mealSlots.id, name: schema.mealSlots.name })
+      .from(schema.mealSlots)
+      .where(inArray(schema.mealSlots.name, slotsProvided as any));
+    const slotMap = new Map(slotRows.map((s) => [s.name, s.id]));
+    const missingSlots = slotsProvided.filter((s) => !slotMap.has(s));
+    if (missingSlots.length) {
+      throw new BadRequestException(
+        `Meal slots not seeded: ${missingSlots.join(", ")}`,
+      );
+    }
+
+    if (dateIso === todayIst) {
+      const slotIds = Array.from(new Set(slotRows.map((s) => s.id)));
+      const campusSlotRows = await this.db
+        .select({
+          mealSlotId: schema.campusMealSlots.mealSlotId,
+          startTime: schema.campusMealSlots.startTime,
+          deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
+        })
+        .from(schema.campusMealSlots)
+        .where(
+          and(
+            eq(schema.campusMealSlots.campusId, dto.campus_id),
+            inArray(schema.campusMealSlots.mealSlotId, slotIds),
+          ),
+        );
+
+      const campusSlotMap = new Map(campusSlotRows.map((r) => [r.mealSlotId, r]));
+      const now = new Date();
+
+      for (const item of dto.items) {
+        const slotId = slotMap.get(item.slot)!;
+        const campusSlot = campusSlotMap.get(slotId);
+
+        if (!campusSlot) {
+          throw new BadRequestException(
+            `Campus meal slot not configured for ${item.slot}`,
+          );
+        }
+
+        const { deadlineDate } = this.computeDeadlineIst(
+          dateIso,
+          String(campusSlot.startTime),
+          campusSlot.deadlineOffset,
+        );
+
+        if (now > deadlineDate) {
+          throw new BadRequestException(
+            `Cannot create menu for ${item.slot} after deadline`,
+          );
+        }
+      }
     }
 
     const [dailyMenu] = await this.db
@@ -127,19 +197,6 @@ export class MenusService {
         set: { campusId: dto.campus_id, date: dateIso },
       })
       .returning({ id: schema.dailyMenus.id });
-
-    // Fetch slot ids
-    const slotRows = await this.db
-      .select({ id: schema.mealSlots.id, name: schema.mealSlots.name })
-      .from(schema.mealSlots)
-      .where(inArray(schema.mealSlots.name, slotsProvided as any));
-    const slotMap = new Map(slotRows.map((s) => [s.name, s.id]));
-    const missingSlots = slotsProvided.filter((s) => !slotMap.has(s));
-    if (missingSlots.length) {
-      throw new BadRequestException(
-        `Meal slots not seeded: ${missingSlots.join(", ")}`,
-      );
-    }
 
     for (const item of dto.items) {
       const slotId = slotMap.get(item.slot)!;
@@ -169,6 +226,7 @@ export class MenusService {
         dailyMenuId: schema.dailyMenuItems.dailyMenuId,
         mealSlotId: schema.dailyMenuItems.mealSlotId,
         campusId: schema.dailyMenus.campusId,
+        date: schema.dailyMenus.date,
       })
       .from(schema.dailyMenuItems)
       .innerJoin(
@@ -182,6 +240,41 @@ export class MenusService {
     }
 
     this.ensureMenuWriteAccess(menu.campusId, user);
+
+    const menuDate = this.getIstDateKey(menu.date);
+    const todayIst = this.getIstDateKey();
+    if (menuDate < todayIst) {
+      throw new BadRequestException("Cannot edit menu for a past date");
+    }
+
+    if (menuDate === todayIst) {
+      const [campusSlot] = await this.db
+        .select({
+          startTime: schema.campusMealSlots.startTime,
+          deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
+        })
+        .from(schema.campusMealSlots)
+        .where(
+          and(
+            eq(schema.campusMealSlots.campusId, menu.campusId),
+            eq(schema.campusMealSlots.mealSlotId, menu.mealSlotId),
+          ),
+        );
+
+      if (!campusSlot) {
+        throw new BadRequestException("Campus meal slot not configured");
+      }
+
+      const { deadlineDate } = this.computeDeadlineIst(
+        menuDate,
+        String(campusSlot.startTime),
+        campusSlot.deadlineOffset,
+      );
+
+      if (new Date() > deadlineDate) {
+        throw new BadRequestException("Cannot edit menu after deadline");
+      }
+    }
 
     if (dto.meal_item_id === undefined && dto.slot === undefined) {
       throw new BadRequestException("At least one field is required to update");
