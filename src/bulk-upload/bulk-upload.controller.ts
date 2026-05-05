@@ -27,15 +27,17 @@ export class BulkUploadController {
     private readonly bulkUploadService: BulkUploadService,
   ) {}
 
-    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN", "ADMIN"))
     @Post("/students")
     @ApiOperation({ summary: 'Add the student to the campus' })
     async addStudentToCampus(
-        @Body() studentData: studentDataDto,
+      @Body() studentData: studentDataDto,
+      @Req() req: RequestWithUser,
     ) {
-        const [err, res] = await this.bulkUploadService.addStudentToCampus(
-        studentData.students,
-        );
+      const [err, res] = await this.bulkUploadService.addStudentToCampus(
+      studentData.students,
+      req.user,
+      );
         if (err) {
         throw new BadRequestException(err);
         }

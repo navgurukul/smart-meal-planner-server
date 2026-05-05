@@ -25,6 +25,7 @@ export class BulkUploadService {
 
     async addStudentToCampus(
         users_data: any[],
+        requester?: AuthenticatedUser,
     ) {
         try {
             var duplicateStudentCount = 0,
@@ -33,12 +34,31 @@ export class BulkUploadService {
             let enrollments: any[] = [];
 
             let userReport: Array<{ email: string; message: string }> = [];
-            for (let i = 0; i < users_data.length; i++) {
+            let overrideCampusId: number | undefined = undefined;
+            let targetCampusName: string | undefined = users_data[0]?.['campus_name'];
 
-                const [campus] = await this.db
-                    .select({ id: schema.campuses.id, name: schema.campuses.name })
-                    .from(schema.campuses)
-                    .where(ilike(schema.campuses.name, (users_data[i]['campus_name'] ?? '').trim()));
+            if (requester && requester.roles?.some((r) => r.toUpperCase() === 'ADMIN') && !requester.roles?.some((r) => r.toUpperCase() === 'SUPER_ADMIN')) {
+                overrideCampusId = requester.campusId ?? undefined;
+            }
+            for (let i = 0; i < users_data.length; i++) {
+                let campus;
+                if (overrideCampusId) {
+                    [campus] = await this.db
+                        .select({ id: schema.campuses.id, name: schema.campuses.name })
+                        .from(schema.campuses)
+                        .where(eq(schema.campuses.id, overrideCampusId));
+                    if (campus) {
+                        targetCampusName = campus.name;
+                    }
+                } else {
+                    [campus] = await this.db
+                        .select({ id: schema.campuses.id, name: schema.campuses.name })
+                        .from(schema.campuses)
+                        .where(ilike(schema.campuses.name, (users_data[i]['campus_name'] ?? '').trim()));
+                }
+                if (campus && !targetCampusName) {
+                    targetCampusName = campus.name;
+                }
                 if (!campus) {
                     throw new BadRequestException("Campus not found");
                 }
@@ -123,7 +143,7 @@ export class BulkUploadService {
             let messageParts: string[] = [];
 
             if (c > 0) {
-                messageParts.push(`${c} ${c > 1 ? 'students are' : 'student is'} successfully added to the ${users_data[0]['campus_name']} campus`);
+                messageParts.push(`${c} ${c > 1 ? 'students are' : 'student is'} successfully added to the ${targetCampusName ?? users_data[0]['campus_name']} campus`);
             }
             if (duplicateStudentCount > 0) {
                 messageParts.push(`${duplicateStudentCount} ${duplicateStudentCount > 1 ? 'students are' : 'student is'} already assigned to a campus`);
