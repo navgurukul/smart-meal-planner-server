@@ -77,6 +77,40 @@ export class MenusService {
     throw new ForbiddenException("Not permitted for this campus");
   }
 
+  private async ensureMenuWriteBeforeDeadline(
+    menuDate: string,
+    campusId: number,
+    mealSlotId: number,
+    errorMessage: string,
+  ) {
+    const [campusSlot] = await this.db
+      .select({
+        startTime: schema.campusMealSlots.startTime,
+      })
+      .from(schema.campusMealSlots)
+      .where(
+        and(
+          eq(schema.campusMealSlots.campusId, campusId),
+          eq(schema.campusMealSlots.mealSlotId, mealSlotId),
+        ),
+      );
+
+    if (!campusSlot) {
+      throw new BadRequestException("Campus meal slot not configured");
+    }
+
+    // Hard 12-hour deadline for menu edits
+    const { deadlineDate } = this.computeDeadlineIst(
+      menuDate,
+      String(campusSlot.startTime),
+      -12,
+    );
+
+    if (new Date() > deadlineDate) {
+      throw new BadRequestException(errorMessage);
+    }
+  }
+
   private sortSlotsByOrder(result: Record<string, any>) {
     const slotOrder = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
     const sortedResult: typeof result = {};
@@ -93,7 +127,15 @@ export class MenusService {
   }
 
   async upsert(dto: UpsertMenuDto, user: AuthenticatedUser) {
-    this.ensureMenuWriteAccess(dto.campus_id, user);
+    const campusId = this.isSuperAdmin(user)
+      ? dto.campus_id
+      : user.campusId;
+
+    if (!campusId) {
+      throw new BadRequestException("campus_id is required");
+    }
+
+    this.ensureMenuWriteAccess(campusId, user);
 
     const validSlots = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"];
     const slotsProvided = dto.items.map((i) => i.slot);
@@ -143,58 +185,25 @@ export class MenusService {
       );
     }
 
-    if (dateIso === todayIst) {
-      const slotIds = Array.from(new Set(slotRows.map((s) => s.id)));
-      const campusSlotRows = await this.db
-        .select({
-          mealSlotId: schema.campusMealSlots.mealSlotId,
-          startTime: schema.campusMealSlots.startTime,
-          deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
-        })
-        .from(schema.campusMealSlots)
-        .where(
-          and(
-            eq(schema.campusMealSlots.campusId, dto.campus_id),
-            inArray(schema.campusMealSlots.mealSlotId, slotIds),
-          ),
-        );
-
-      const campusSlotMap = new Map(campusSlotRows.map((r) => [r.mealSlotId, r]));
-      const now = new Date();
-
-      for (const item of dto.items) {
-        const slotId = slotMap.get(item.slot)!;
-        const campusSlot = campusSlotMap.get(slotId);
-
-        if (!campusSlot) {
-          throw new BadRequestException(
-            `Campus meal slot not configured for ${item.slot}`,
-          );
-        }
-
-        const { deadlineDate } = this.computeDeadlineIst(
-          dateIso,
-          String(campusSlot.startTime),
-          campusSlot.deadlineOffset,
-        );
-
-        if (now > deadlineDate) {
-          throw new BadRequestException(
-            `Cannot create menu for ${item.slot} after deadline`,
-          );
-        }
-      }
+    for (const item of dto.items) {
+      const slotId = slotMap.get(item.slot)!;
+      await this.ensureMenuWriteBeforeDeadline(
+        dateIso,
+        campusId,
+        slotId,
+        `Cannot create menu for ${item.slot} after deadline`,
+      );
     }
 
     const [dailyMenu] = await this.db
       .insert(schema.dailyMenus)
       .values({
-        campusId: dto.campus_id,
+        campusId,
         date: dateIso,
       })
       .onConflictDoUpdate({
         target: [schema.dailyMenus.campusId, schema.dailyMenus.date],
-        set: { campusId: dto.campus_id, date: dateIso },
+        set: { campusId, date: dateIso },
       })
       .returning({ id: schema.dailyMenus.id });
 
@@ -247,34 +256,12 @@ export class MenusService {
       throw new BadRequestException("Cannot edit menu for a past date");
     }
 
-    if (menuDate === todayIst) {
-      const [campusSlot] = await this.db
-        .select({
-          startTime: schema.campusMealSlots.startTime,
-          deadlineOffset: schema.campusMealSlots.selectionDeadlineOffsetHours,
-        })
-        .from(schema.campusMealSlots)
-        .where(
-          and(
-            eq(schema.campusMealSlots.campusId, menu.campusId),
-            eq(schema.campusMealSlots.mealSlotId, menu.mealSlotId),
-          ),
-        );
-
-      if (!campusSlot) {
-        throw new BadRequestException("Campus meal slot not configured");
-      }
-
-      const { deadlineDate } = this.computeDeadlineIst(
-        menuDate,
-        String(campusSlot.startTime),
-        campusSlot.deadlineOffset,
-      );
-
-      if (new Date() > deadlineDate) {
-        throw new BadRequestException("Cannot edit menu after deadline");
-      }
-    }
+    await this.ensureMenuWriteBeforeDeadline(
+      menuDate,
+      menu.campusId,
+      menu.mealSlotId,
+      "You can only edit the menu up to 12 hours before serving time.",
+    );
 
     if (dto.meal_item_id === undefined && dto.slot === undefined) {
       throw new BadRequestException("At least one field is required to update");
@@ -349,8 +336,14 @@ export class MenusService {
       .select({
         id: schema.dailyMenuItems.id,
         dailyMenuId: schema.dailyMenuItems.dailyMenuId,
+        mealSlotId: schema.dailyMenuItems.mealSlotId,
+        date: schema.dailyMenus.date,
       })
       .from(schema.dailyMenuItems)
+      .innerJoin(
+        schema.dailyMenus,
+        eq(schema.dailyMenuItems.dailyMenuId, schema.dailyMenus.id),
+      )
       .where(eq(schema.dailyMenuItems.id, dailyMenuItemId));
 
     if (!menuItem) {
@@ -367,6 +360,13 @@ export class MenusService {
     }
 
     this.ensureMenuWriteAccess(dailyMenu.campusId, user);
+
+    await this.ensureMenuWriteBeforeDeadline(
+      this.getIstDateKey(menuItem.date),
+      dailyMenu.campusId,
+      menuItem.mealSlotId,
+      "You can only delete the menu up to 12 hours before serving time.",
+    );
 
     await this.db
       .delete(schema.dailyMenuItems)
