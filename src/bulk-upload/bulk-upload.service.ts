@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, ForbiddenException } from "@nestjs/common";
 import { Inject } from "@nestjs/common/decorators";
 import { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DRIZZLE_DB } from "src/meal-items/db/constant";
@@ -177,7 +177,7 @@ export class BulkUploadService {
         }
     }
 
-    async updateStudentById(studentId: number, studentData: updateStudentByIdDto) {
+    async updateStudentById(studentId: number, studentData: updateStudentByIdDto, requester?: AuthenticatedUser) {
         try {
             const studentName = studentData.name?.trim();
             const campusName = studentData.campus_name?.trim();
@@ -187,12 +187,24 @@ export class BulkUploadService {
                 .select({
                     id: schema.users.id,
                     email: schema.users.email,
+                    campusId: schema.users.campusId,
                 })
                 .from(schema.users)
                 .where(eq(schema.users.id, studentId));
 
             if (!existingUser) {
                 throw new BadRequestException('Student not found');
+            }
+
+            // ADMIN can only update students in their own campus
+            if (
+                requester &&
+                requester.roles?.some((r) => r.toUpperCase() === 'ADMIN') &&
+                !requester.roles?.some((r) => r.toUpperCase() === 'SUPER_ADMIN')
+            ) {
+                if (existingUser.campusId !== requester.campusId) {
+                    throw new ForbiddenException('Access denied. You can only update students from your own campus.');
+                }
             }
 
             if (email) {

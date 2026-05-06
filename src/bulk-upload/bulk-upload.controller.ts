@@ -44,16 +44,18 @@ export class BulkUploadController {
         return res;
     }
 
-    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN", "ADMIN"))
     @Put("/students/:studentId")
     @ApiOperation({ summary: "Update student data by id" })
     async updateStudentById(
       @Param("studentId", ParseIntPipe) studentId: number,
       @Body() studentData: updateStudentByIdDto,
+      @Req() req: RequestWithUser,
     ) {
       const [err, res] = await this.bulkUploadService.updateStudentById(
         studentId,
         studentData,
+        req.user,
       );
       if (err) {
         throw new BadRequestException(err);
@@ -61,7 +63,7 @@ export class BulkUploadController {
       return res;
     }
 
-    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN"))
+    @UseGuards(JwtAuthGuard, requireRole("SUPER_ADMIN", "ADMIN"))
     @Delete("/students/:studentId")
     @ApiOperation({ summary: "Delete student by id" })
     async deleteStudentById(

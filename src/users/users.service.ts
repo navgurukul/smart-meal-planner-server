@@ -430,6 +430,15 @@ export class UsersService {
         throw new NotFoundException("User not found");
       }
 
+      // ADMINs can only delete users in their own campus
+      if (
+        this.isAdmin(requester) &&
+        !this.isSuperAdmin(requester) &&
+        existingUser.campusId !== requester.campusId
+      ) {
+        throw new ForbiddenException("Campus access denied");
+      }
+
       await this.db
         .delete(schema.userRole)
         .where(eq(schema.userRole.userId, userId));
