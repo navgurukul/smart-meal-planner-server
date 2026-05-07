@@ -240,41 +240,127 @@ export class UsersService {
       throw new BadRequestException("Campus not found");
     }
 
+    const resolveRequestedRoles = async () => {
+      const provided = (dto as any).roles ?? (dto as any).role;
+      const providedArray = Array.isArray(provided)
+        ? provided
+        : provided
+          ? [provided]
+          : [];
+      if (!providedArray.length) {
+        throw new BadRequestException("Role(s) required");
+      }
+
+      const ids: number[] = [];
+      const names: string[] = [];
+      for (const item of providedArray) {
+        if (
+          typeof item === "number" ||
+          (typeof item === "string" && /^\d+$/.test(item))
+        ) {
+          ids.push(Number(item));
+        } else if (typeof item === "string") {
+          names.push(item.toUpperCase().trim());
+        }
+      }
+
+      const roleRecords: Array<{ id: number; name: string }> = [];
+      if (ids.length) {
+        const byId = await this.db
+          .select({ id: schema.roles.id, name: schema.roles.name })
+          .from(schema.roles)
+          .where(inArray(schema.roles.id, ids));
+        const missingIds = ids.filter((i) => !byId.find((r) => r.id === i));
+        if (missingIds.length) {
+          throw new BadRequestException(
+            `Roles not found for ids: ${missingIds.join(", ")}`,
+          );
+        }
+        roleRecords.push(...byId);
+      }
+
+      if (names.length) {
+        const byName = await this.db
+          .select({ id: schema.roles.id, name: schema.roles.name })
+          .from(schema.roles)
+          .where(inArray(schema.roles.name, names));
+        const missingNames = names.filter(
+          (n) => !byName.find((r) => r.name === n),
+        );
+        if (missingNames.length) {
+          throw new BadRequestException(
+            `Roles not found: ${missingNames.join(", ")}`,
+          );
+        }
+        for (const r of byName) {
+          if (!roleRecords.find((x) => x.id === r.id)) roleRecords.push(r);
+        }
+      }
+
+      if (!roleRecords.length) {
+        throw new BadRequestException("No valid roles provided");
+      }
+
+      return roleRecords;
+    };
+
+    const requestedRoles = await resolveRequestedRoles();
+
+    if (requestedRoles.length > 2) {
+      throw new BadRequestException(
+        `Maximum 2 roles allowed. You requested ${requestedRoles.length} roles.`,
+      );
+    }
+
     const [existing] = await this.db
-      .select({ id: schema.users.id, campusId: schema.users.campusId })
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        campusId: schema.users.campusId,
+        status: schema.users.status,
+        address: schema.users.address,
+      })
       .from(schema.users)
       .where(eq(schema.users.email, dto.email));
     if (existing) {
-      // Fetch the existing user's role(s) and campus name for a contextual error
       const existingRoles = await this.db
-        .select({ roleName: schema.roles.name })
+        .select({ roleId: schema.userRole.roleId })
+        .from(schema.userRole)
+        .where(eq(schema.userRole.userId, existing.id));
+
+      const existingRoleIds = new Set(existingRoles.map((r) => r.roleId));
+      const toInsert = requestedRoles
+        .filter((r) => !existingRoleIds.has(r.id))
+        .map((r) => ({ userId: existing.id, roleId: r.id }));
+
+      // Check total role count won't exceed 2
+      const totalRolesAfterAssign = existingRoleIds.size + toInsert.length;
+      if (totalRolesAfterAssign > 2) {
+        throw new BadRequestException(
+          `Maximum 2 roles allowed per user. Current: ${existingRoleIds.size}.`,
+        );
+      }
+
+      if (toInsert.length) {
+        await this.db.insert(schema.userRole).values(toInsert).onConflictDoNothing();
+      }
+
+      const finalRoles = await this.db
+        .select({ name: schema.roles.name })
         .from(schema.userRole)
         .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
         .where(eq(schema.userRole.userId, existing.id));
 
-      const [existingCampus] = await this.db
-        .select({ name: schema.campuses.name })
-        .from(schema.campuses)
-        .where(eq(schema.campuses.id, existing.campusId));
-
-      const existingRoleNames = existingRoles.map((r) => r.roleName);
-      const campusName = existingCampus?.name ?? 'a campus';
-
-      // Format the role being attempted (e.g. "ADMIN" → "Admin")
-      const attemptedRoleLabel = dto.role
-        ? dto.role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
-        : 'this role';
-
-      // Format each existing role as a readable label
-      const existingRoleLabel = existingRoleNames.length
-        ? existingRoleNames
-          .map((r) => r.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()))
-          .join(' / ')
-        : 'another role';
-
-      throw new BadRequestException(
-        `The user you're trying to add as ${attemptedRoleLabel.match(/^[AEIOU]/i) ? 'an' : 'a'} ${attemptedRoleLabel} is already assigned to ${campusName} campus as ${existingRoleLabel.match(/^[AEIOU]/i) ? 'an' : 'a'} ${existingRoleLabel}`,
-      );
+      return {
+        id: existing.id,
+        name: existing.name,
+        email: existing.email,
+        campusId: existing.campusId,
+        status: existing.status,
+        address: existing.address,
+        roles: finalRoles.map((r) => r.name),
+      };
     }
 
     const [user] = await this.db
@@ -306,13 +392,12 @@ export class UsersService {
       set: { isPrimary: true },
     });
 
-    const roleId = await this.ensureRole(dto.role);
-    await this.db.insert(schema.userRole).values({
-      userId: user.id,
-      roleId: roleId,
-    });
+    const toInsert = requestedRoles.map((r) => ({ userId: user.id, roleId: r.id }));
+    if (toInsert.length) {
+      await this.db.insert(schema.userRole).values(toInsert).onConflictDoNothing();
+    }
 
-    return { ...user, role: dto.role };
+    return { ...user, roles: requestedRoles.map((r) => r.name) };
   }
 
   async updateUser(
@@ -537,7 +622,14 @@ export class UsersService {
       .where(eq(schema.userRole.userId, userId));
 
     const existingRoleIds = new Set(existing.map((r) => r.roleId));
-    const desiredRoleIds = new Set(roleRecords.map((r) => r.id));
+    
+    // Check total role count won't exceed 2
+    const totalRolesAfterAssign = existingRoleIds.size + roleRecords.filter((r) => !existingRoleIds.has(r.id)).length;
+    if (totalRolesAfterAssign > 2) {
+      throw new BadRequestException(
+        `Maximum 2 roles allowed per user. Current: ${existingRoleIds.size}`,
+      );
+    }
 
     const toInsert = roleRecords
       .filter((r) => !existingRoleIds.has(r.id))
@@ -546,10 +638,6 @@ export class UsersService {
         roleId: r.id,
       }));
 
-    const toDelete = [...existingRoleIds].filter(
-      (id) => !desiredRoleIds.has(id),
-    );
-
     if (toInsert.length) {
       await this.db
         .insert(schema.userRole)
@@ -557,19 +645,14 @@ export class UsersService {
         .onConflictDoNothing();
     }
 
-    if (toDelete.length) {
-      await this.db
-        .delete(schema.userRole)
-        .where(
-          and(
-            eq(schema.userRole.userId, userId),
-            inArray(schema.userRole.roleId, toDelete),
-          ),
-        );
-    }
+    const finalRoles = await this.db
+      .select({ name: schema.roles.name })
+      .from(schema.userRole)
+      .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
+      .where(eq(schema.userRole.userId, userId));
 
     return {
-      roles: roleRecords.map((r) => r.name),
+      roles: finalRoles.map((r) => r.name),
     };
   }
 
