@@ -81,6 +81,7 @@ export class MenusService {
     menuDate: string,
     campusId: number,
     mealSlotId: number,
+    offsetHours: number,
     errorMessage: string,
   ) {
     const [campusSlot] = await this.db
@@ -99,11 +100,11 @@ export class MenusService {
       throw new BadRequestException("Campus meal slot not configured");
     }
 
-    // Hard 12-hour deadline for menu edits
+    // Menu can only be modified before the configured deadline for the slot.
     const { deadlineDate } = this.computeDeadlineIst(
       menuDate,
       String(campusSlot.startTime),
-      -12,
+      -offsetHours,
     );
 
     if (new Date() > deadlineDate) {
@@ -191,7 +192,8 @@ export class MenusService {
         dateIso,
         campusId,
         slotId,
-        `Cannot create menu for ${item.slot} after deadline`,
+        168,
+        `Cannot create menu for ${item.slot}. Menu must be created at least 7 days before serving time.`,
       );
     }
 
@@ -260,7 +262,8 @@ export class MenusService {
       menuDate,
       menu.campusId,
       menu.mealSlotId,
-      "You can only edit the menu up to 12 hours before serving time.",
+      24,
+      "You can only edit the menu up to 24 hours before serving time.",
     );
 
     if (dto.meal_item_id === undefined && dto.slot === undefined) {
@@ -365,7 +368,8 @@ export class MenusService {
       this.getIstDateKey(menuItem.date),
       dailyMenu.campusId,
       menuItem.mealSlotId,
-      "You can only delete the menu up to 12 hours before serving time.",
+      24,
+      "You can only delete the menu up to 24 hours before serving time.",
     );
 
     await this.db
