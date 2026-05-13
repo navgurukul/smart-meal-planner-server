@@ -28,6 +28,11 @@ export class MenusService {
     }).format(typeof date === "string" ? new Date(date) : date);
   }
 
+  private getIstDateKeyAfterDays(days: number, baseDate: Date = new Date()) {
+    const date = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+    return this.getIstDateKey(date);
+  }
+
   private isSuperAdmin(user: AuthenticatedUser) {
     return user.roles?.includes("SUPER_ADMIN");
   }
@@ -168,9 +173,16 @@ export class MenusService {
       throw new BadRequestException("Invalid date");
     }
 
-    const todayIst = this.getIstDateKey();
-    if (dateIso < todayIst) {
-      throw new BadRequestException("Cannot create menu for a past date");
+    const tomorrowIst = this.getIstDateKeyAfterDays(1);
+    if (dateIso < tomorrowIst) {
+      throw new BadRequestException("Cannot create menu for today or past dates");
+    }
+
+    const maxAllowedDate = this.getIstDateKeyAfterDays(7);
+    if (dateIso > maxAllowedDate) {
+      throw new BadRequestException(
+        "Cannot create menu beyond the upcoming 7 days",
+      );
     }
 
     // Fetch slot ids first so we can validate deadline and campus slot setup.
@@ -186,14 +198,23 @@ export class MenusService {
       );
     }
 
-    for (const item of dto.items) {
-      const slotId = slotMap.get(item.slot)!;
-      await this.ensureMenuWriteBeforeDeadline(
-        dateIso,
-        campusId,
-        slotId,
-        168,
-        `Cannot create menu for ${item.slot}. Menu must be created at least 7 days before serving time.`,
+    const slotIds = Array.from(new Set(slotRows.map((slot) => slot.id)));
+    const configuredCampusSlots = await this.db
+      .select({ mealSlotId: schema.campusMealSlots.mealSlotId })
+      .from(schema.campusMealSlots)
+      .where(
+        and(
+          eq(schema.campusMealSlots.campusId, campusId),
+          inArray(schema.campusMealSlots.mealSlotId, slotIds),
+        ),
+      );
+    const configuredSlotIdSet = new Set(configuredCampusSlots.map((s) => s.mealSlotId));
+    const unconfiguredSlotNames = slotRows
+      .filter((slot) => !configuredSlotIdSet.has(slot.id))
+      .map((slot) => slot.name);
+    if (unconfiguredSlotNames.length) {
+      throw new BadRequestException(
+        `Campus meal slot not configured: ${unconfiguredSlotNames.join(", ")}`,
       );
     }
 
