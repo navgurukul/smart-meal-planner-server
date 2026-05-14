@@ -102,17 +102,38 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
+  @Get("suggestions")
+  @ApiOperation({ summary: "Get student suggestions for autocomplete (name/email search)" })
+  @ApiQuery({ name: "campus_id", required: false, type: Number })
+  @ApiQuery({ name: "query", required: false, type: String, description: "Search by name or email" })
+  suggestions(
+    @Req() req: RequestWithUser,
+    @Query("campus_id") campusId?: string,
+    @Query("query") searchQuery?: string,
+  ) {
+    const parsedCampusId = campusId ? Number(campusId) : null;
+    return this.usersService.getStudentSuggestions(
+      Number.isNaN(parsedCampusId) ? null : parsedCampusId,
+      req.user!,
+      searchQuery?.trim() || undefined,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, requireRole("ADMIN", "SUPER_ADMIN"))
   @Get()
   @ApiOperation({ summary: "List all students (admin/super-admin) by campus" })
   @ApiQuery({ name: "campus_id", required: false, type: Number })
+  @ApiQuery({ name: "search", required: false, type: String, description: "Search by student name or email" })
   list(
     @Req() req: RequestWithUser,
     @Query("campus_id") campusId?: string,
+    @Query("search") searchTerm?: string,
   ) {
     const parsedCampusId = campusId ? Number(campusId) : null;
     return this.usersService.listUsers(
       Number.isNaN(parsedCampusId) ? null : parsedCampusId,
       req.user!,
+      searchTerm?.trim() || undefined,
     );
   }
 

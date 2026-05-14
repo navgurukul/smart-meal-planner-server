@@ -49,9 +49,80 @@ export class UsersService {
     return created.id;
   }
 
+  async getStudentSuggestions(
+    campusId: number | null,
+    requester: AuthenticatedUser,
+    searchQuery?: string,
+  ): Promise<
+    Array<{
+      id: number;
+      name: string | null;
+      email: string;
+    }>
+  > {
+    const superAdmin = this.isSuperAdmin(requester);
+    const admin = this.isAdmin(requester);
+    if (!superAdmin && !admin) {
+      throw new ForbiddenException("Not permitted");
+    }
+
+    let resolvedCampusId = campusId;
+    if (!superAdmin) {
+      if (
+        resolvedCampusId &&
+        !requester.campusIds?.includes(resolvedCampusId)
+      ) {
+        throw new ForbiddenException("Campus access denied");
+      }
+      resolvedCampusId =
+        resolvedCampusId ??
+        requester.campusId ??
+        requester.campusIds?.[0] ??
+        null;
+    }
+
+    const normalizedQuery = searchQuery?.trim();
+    const searchCondition = normalizedQuery
+      ? or(
+          ilike(schema.users.name, `%${normalizedQuery}%`),
+          ilike(schema.users.email, `%${normalizedQuery}%`),
+        )
+      : undefined;
+
+    const suggestions = await this.db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+      })
+      .from(schema.users)
+      .where(
+        and(
+          resolvedCampusId
+            ? or(
+                eq(schema.users.campusId, resolvedCampusId),
+                inArray(
+                  schema.users.id,
+                  this.db
+                    .select({ userId: schema.userCampuses.userId })
+                    .from(schema.userCampuses)
+                    .where(eq(schema.userCampuses.campusId, resolvedCampusId)),
+                ),
+              )
+            : undefined,
+          searchCondition,
+        ),
+      )
+      .orderBy(sql`LOWER(${schema.users.name})`)
+      .limit(10);
+
+    return suggestions;
+  }
+
   async listUsers(
     campusId: number | null,
     requester: AuthenticatedUser,
+    searchTerm?: string,
   ): Promise<{
     users: Array<{
       id: number;
@@ -86,6 +157,14 @@ export class UsersService {
         null;
     }
 
+    const normalizedSearchTerm = searchTerm?.trim();
+    const searchCondition = normalizedSearchTerm
+      ? or(
+          ilike(schema.users.name, `%${normalizedSearchTerm}%`),
+          ilike(schema.users.email, `%${normalizedSearchTerm}%`),
+        )
+      : undefined;
+
     const baseUsers = await this.db
       .select({
         id: schema.users.id,
@@ -104,12 +183,15 @@ export class UsersService {
         ),
       )
       .where(
-        resolvedCampusId
-          ? or(
-            eq(schema.users.campusId, resolvedCampusId),
-            eq(schema.userCampuses.campusId, resolvedCampusId),
-          )
-          : undefined,
+        and(
+          resolvedCampusId
+            ? or(
+              eq(schema.users.campusId, resolvedCampusId),
+              eq(schema.userCampuses.campusId, resolvedCampusId),
+            )
+            : undefined,
+          searchCondition,
+        ),
       )
       .orderBy(sql`LOWER(${schema.users.name})`);
     if (!baseUsers.length) {
