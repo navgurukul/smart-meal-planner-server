@@ -406,43 +406,7 @@ export class UsersService {
       .from(schema.users)
       .where(eq(schema.users.email, dto.email));
     if (existing) {
-      const existingRoles = await this.db
-        .select({ roleId: schema.userRole.roleId })
-        .from(schema.userRole)
-        .where(eq(schema.userRole.userId, existing.id));
-
-      const existingRoleIds = new Set(existingRoles.map((r) => r.roleId));
-      const toInsert = requestedRoles
-        .filter((r) => !existingRoleIds.has(r.id))
-        .map((r) => ({ userId: existing.id, roleId: r.id }));
-
-      // Check total role count won't exceed 2
-      const totalRolesAfterAssign = existingRoleIds.size + toInsert.length;
-      if (totalRolesAfterAssign > 2) {
-        throw new BadRequestException(
-          `Maximum 2 roles allowed per user. Current: ${existingRoleIds.size}.`,
-        );
-      }
-
-      if (toInsert.length) {
-        await this.db.insert(schema.userRole).values(toInsert).onConflictDoNothing();
-      }
-
-      const finalRoles = await this.db
-        .select({ name: schema.roles.name })
-        .from(schema.userRole)
-        .innerJoin(schema.roles, eq(schema.userRole.roleId, schema.roles.id))
-        .where(eq(schema.userRole.userId, existing.id));
-
-      return {
-        id: existing.id,
-        name: existing.name,
-        email: existing.email,
-        campusId: existing.campusId,
-        status: existing.status,
-        address: existing.address,
-        roles: finalRoles.map((r) => r.name),
-      };
+      throw new BadRequestException("User with this email already exists");
     }
 
     const [user] = await this.db
