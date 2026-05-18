@@ -28,10 +28,10 @@ export class CreateUserDto {
   @IsPositive()
   campus_id: number;
 
-  @ApiProperty({ example: 1 })
-  @IsInt()
-  @IsPositive()
-  role: string;
+  @ApiProperty({ example: [1, 2], description: 'Role IDs or role names. Accepts a single value or array.', required: false })
+  @IsOptional()
+  // Accept either a single id/string or an array of ids/strings; validate in service
+  roles?: number | string | Array<number | string>;
 
   @ApiProperty({ example: "123, MG Road, Bangalore", required: false })
   @IsString()

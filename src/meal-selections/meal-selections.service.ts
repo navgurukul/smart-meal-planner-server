@@ -56,13 +56,13 @@ export class MealSelectionsService {
     return fallback?.campusId ?? null;
   }
 
-  private computeDeadline(date: string, slotStart: string, offsetHours: number): Date {
-    const start = new Date(`${date}T${slotStart}`);
-    if (Number.isNaN(start.getTime())) {
+  private computeSelectionEndTime(date: string, slotStart: string, cutoffHours: number): Date {
+    const serving = new Date(`${date}T${slotStart}`);
+    if (Number.isNaN(serving.getTime())) {
       throw new BadRequestException("Invalid date or slot start time");
     }
-    const msOffset = offsetHours * 60 * 60 * 1000;
-    return new Date(start.getTime() + msOffset);
+    const msOffset = cutoffHours * 60 * 60 * 1000;
+    return new Date(serving.getTime() - msOffset);
   }
 
   private expandDates(dto: CreateMealSelectionDto) {
@@ -100,6 +100,7 @@ export class MealSelectionsService {
         id: schema.mealSlots.id,
         name: schema.mealSlots.name,
         startTime: schema.campusMealSlots.startTime,
+        endTime: schema.campusMealSlots.endTime,
         selectionDeadlineOffsetHours:
           schema.campusMealSlots.selectionDeadlineOffsetHours,
       })
@@ -119,16 +120,29 @@ export class MealSelectionsService {
       }
 
       for (const date of dates) {
-        const deadline = this.computeDeadline(
+        // compute serving time and selection cutoff dynamically from campus config
+        const servingStartTime = new Date(`${date}T${slot.startTime}`);
+        const servingEndTime = new Date(`${date}T${slot.endTime}`);
+        if (Number.isNaN(servingStartTime.getTime()) || Number.isNaN(servingEndTime.getTime())) {
+          throw new BadRequestException("Invalid date or slot serving time");
+        }
+
+        const selectionEndTime = this.computeSelectionEndTime(
           date,
           slot.startTime,
           slot.selectionDeadlineOffsetHours,
         );
 
-        if (new Date() > deadline) {
-          throw new BadRequestException(
-            `Selection window closed for ${date} ${item.meal_slot}`,
-          );
+        const now = new Date();
+
+        // If the meal serving window has ended, it is already served.
+        if (now > servingEndTime) {
+          throw new BadRequestException("This meal has already been served.");
+        }
+
+        // If current time is past the selection cutoff
+        if (now > selectionEndTime) {
+          throw new BadRequestException("Meal selection is closed for this serving time.");
         }
 
         await this.db
@@ -162,7 +176,7 @@ export class MealSelectionsService {
           date,
           meal_slot: item.meal_slot,
           selected: item.selected,
-          deadline: deadline.toISOString(),
+          deadline: selectionEndTime.toISOString(),
         });
       }
     }
