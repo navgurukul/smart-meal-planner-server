@@ -621,6 +621,7 @@ export class UsersService {
         campusId: schema.users.campusId,
         primaryCampusId: schema.userCampuses.campusId,
       })
+      
       .from(schema.users)
       .leftJoin(
         schema.userCampuses,
